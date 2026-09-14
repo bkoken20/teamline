@@ -69,7 +69,7 @@ def main():
     ck("register returns team/ext and a directory snapshot",
        r["ext"] == "beta/deep-work" and isinstance(r.get("directory"), list), r)
     r2 = sb.register("alpha", "docs-writer", now="writing the docs", feed=True)
-    ck("a alpha extension registers with a feed (no session id)", r2["ext"] == "alpha/docs-writer", r2)
+    ck("an extension registers with a feed and no session id", r2["ext"] == "alpha/docs-writer", r2)
     try:
         sb.register("alpha", "beta/x", now="n", feed=True)
         ck("an ext may not carry another team's prefix", False, "no error")
@@ -129,7 +129,7 @@ def main():
 
     # ---- 4. concurrency: second pair in parallel, cap 6 into beta
     # The cap is PER TEAM, counted across every ringing/open call whose callee is on that team.
-    # 3 was beta's own wake-budget answer to the wake-budget question; the OPERATOR raised it to 6 on 2026-09-08
+    # 3 was the acking team's own answer on how many simultaneous wakes they could absorb; the OPERATOR raised it to 6 on 2026-09-08
     # ("increase to 6, each can answer, simultaneously, no problem") -- one live lane each.
     sb.register("beta", "spec-owner", now="spec package", session_id="sess-2")
     sb.register("alpha", "spec-review", now="reviewing the spec", feed=True)
@@ -368,7 +368,7 @@ def main():
     # ---- 13. voicemail across a RETIRED lane -- the two facts the operator's 2026-09-06 decision
     #          rests on (docs/PROTOCOL.md, "why there is no standby holder").
     #          13a is why hand registration is SAFE: an off box costs a delay, not a message.
-    #          13b is why a the broker's host-side standby holder would be UNSAFE as the broker stands.
+    #          13b is why a standby holder on the broker's own host would be UNSAFE as the broker stands.
     SBv, sv2, cv = fresh(tempfile.mkdtemp(prefix="sb_"))
     seen = []
     sv2.on_event(lambda e: seen.append(e))

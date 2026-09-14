@@ -19,7 +19,7 @@ import urllib.parse
 DEFAULT_URL = os.environ.get("TEAMLINE_URL", "http://127.0.0.1:3790")
 # The TEAM comes from the same place as the CLI's (teamline_cli.PARTY). Until 2026-09-08 this script
 # knew only --party and fell back to "alpha", so a session that exported TEAMLINE_PARTY and started
-# its feed registered SILENTLY INTO ALPHA -- no error on either side. --party still wins when given.
+# its feed registered SILENTLY INTO THE DEFAULT TEAM -- no error on either side. --party still wins when given.
 DEFAULT_PARTY = os.environ.get("TEAMLINE_PARTY", "alpha").strip().lower()
 
 
@@ -94,7 +94,7 @@ async def hold(url, ping_s=25.0):
                     detail=("the broker REFUSED this feed and retrying cannot help: either your TEAM is not "
                             "enabled on the broker (switchboard.TEAMS), or no --ext was given. STOPPING rather "
                             "than looping. Ask the operator to have the TEAMLINE maintainer enable the team -- it "
-                            "is a broker change plus a the broker's host container rebuild, and cannot be done from here."),
+                            "is a broker change plus a restart of the broker, and cannot be done from here."),
                     url=url.split("/ws?")[0], exit=REFUSED_EXIT), ensure_ascii=False), flush=True)
                 return REFUSED_EXIT
             elif _busy(e):

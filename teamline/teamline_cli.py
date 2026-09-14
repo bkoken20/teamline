@@ -1,7 +1,7 @@
 """TEAMLINE CLI -- the phone for a session WITHOUT the MCP tools (any existing session, either team).
     python teamline_cli.py <tool> [json-args]      party = env TEAMLINE_PARTY (default alpha)
 Beta: copy this file into your own tree and set TEAMLINE_PARTY=beta (or edit the default).
-Inbound reaches a the host session through the host (session.prompt) once it has line_register-ed;
+Inbound reaches a session through whatever its harness uses to deliver, once it holds a feed;
 a Claude session holds Monitor(ws://127.0.0.1:3790/ws?party=<party>). docs/ONBOARDING.md
 """
 import asyncio, json, logging, os, sys, httpx2

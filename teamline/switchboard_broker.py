@@ -1,5 +1,5 @@
 """SWITCHBOARD wiring for the broker (inverted delivery): sw_* MCP tools, per-extension feeds,
-delivery by the extension's own feed holder, liveness from keepalives. No the host is called.
+delivery by the extension's own feed holder, liveness from keepalives. The broker calls no session's host.
 
 Feed contract (frozen 2026-09-03 08:26 with team beta):
   broker -> feed : events {id,to,kind,lane,call_id,text[,part:[i,n]]} (long texts as numbered parts)
@@ -59,7 +59,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
                 f"team {p!r} is not enabled on this broker. The team comes from the {HEADER} header "
                 f"(or ?party= on /ws) and is fixed by your harness config, never chosen by the model -- "
                 f"retrying, or trying a variant of the name, cannot work. Ask the operator to have the "
-                f"teamline maintainer enable it: a broker change plus a the broker's host container rebuild.")
+                f"teamline maintainer enable it: a broker change plus a restart of the broker.")
         return p
 
     def guard(fn):
@@ -96,7 +96,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
         invisible in every record we keep, and ran through three incidents unnoticed.
 
         Only the session_id re-attach branch in feed() can accumulate: register() refuses an ext that
-        is LIVE, so a alpha feed (--sid, no session_id) cannot. A watcher relaunched on resume
+        is LIVE, so a non-acking feed (--sid, no session_id) cannot. A watcher relaunched on resume
         without killing its predecessor adds one each time.
         """
         return [dict(e, holders=len(feeds.get(e["ext"], ()))) for e in sb.directory()]
@@ -169,7 +169,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
             if held:
                 # ONE HOLDER PER EXTENSION (operator, 2026-09-08: "adopt refuse-second-holder").
                 # A LIVE incumbent is never evicted -- evicting one lets N clients form a ring, each
-                # replacing the last, which is what would have happened to b1's five (they share one
+                # replacing the last, which is what would have happened to that lane's five (they share one
                 # session_id, so any identity carve-out routes the real failure case into replace).
                 #
                 # The refusal is RETRYABLE, and that is load-bearing. last_seen can be up to

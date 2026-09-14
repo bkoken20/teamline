@@ -1,6 +1,6 @@
 """SWITCHBOARD end-to-end, the broker's host mode (inverted delivery): the real broker in-process,
 MCP clients as extensions (team by header, ext by argument), a WebSocket feed per extension, a FAKE
-BETA WATCHER standing in for their box (holds feeds with session_id, ACKS deliveries, sends
+ACKING WATCHER standing in for a second team's delivery agent (holds feeds with session_id, ACKS deliveries, sends
 keepalives carrying `running`), the observer feed for the operator page. The broker reaches no session's host: delivery into beta is inverted -- the watcher delivers and acks.
 
 Run: python tests/test_switchboard_e2e.py
@@ -173,8 +173,8 @@ async def run(tmp):
 
     # SECURITY (2026-09-08, reported by alpha/lane-beta and reproduced here): the two clients
     # read the TEAM FROM DIFFERENT PLACES. teamline_cli honours TEAMLINE_PARTY; teamline_feed knew only
-    # --party and fell back to "alpha". So a session told (quickstart §gamma) to export
-    # TEAMLINE_PARTY and then start its feed registered SILENTLY INTO ALPHA -- a cross-team
+    # --party and fell back to "alpha". So a session told (the onboarding doc) to export
+    # TEAMLINE_PARTY and then start its feed registered SILENTLY INTO THE DEFAULT TEAM -- a cross-team
     # registration with no error anywhere, which is the disguise outcome reached by accident. D2: the
     # old design was correct only if every caller remembered a flag its sibling tool does not need.
     def _run_feed_env():
@@ -264,7 +264,7 @@ async def run(tmp):
     await call("beta", "sw_say", ext="deep", text="depth line")
     await call("beta", "sw_say", ext="ruler", text="ruler line")
     await asyncio.sleep(0.5)
-    ck("feed frames route by extension: writer got only the depth line, f1 only the ruler line",
+    ck("feed frames route by extension: writer got only the depth line, review only the ruler line",
        any(e.get("kind") == "say" and "depth line" in e["text"] for e in feeds["writer"])
        and not any("ruler line" in e.get("text", "") for e in feeds["writer"])
        and any(e.get("kind") == "say" and "ruler line" in e.get("text", "") for e in feeds["review"])
@@ -277,7 +277,7 @@ async def run(tmp):
        and sum(1 for e in ledger() if e["event"] == "delivered" and e["session_id"] == "sess-A") == len(delivered["deep"]), (len(delivered["deep"]),))
     await call("alpha", "sw_say", ext="writer", text="thanks depth")
     await asyncio.sleep(0.4)
-    ck("a alpha line goes to its peer's watcher only",
+    ck("an in-call line goes to its peer's watcher only",
        any("thanks depth" in x["text"] for x in delivered["deep"]) and not any("thanks depth" in x["text"] for x in delivered["ruler"]))
     # ack refused / no ack
     ack_mode["ruler"] = False
@@ -332,7 +332,7 @@ async def run(tmp):
     ck("POST /hook/now with the feed's sid sets the derived now line", rr.status_code == 200 and d["alpha/hooked"]["now"] == "Build the hook side", d.get("alpha/hooked"))
     async with httpx2.AsyncClient() as hc:
         rr = await hc.post("http://127.0.0.1:%d/hook/now" % PORT, json={"session_id": "sess-A", "text": "beta watcher line"})
-    ck("/hook/now with a the host session id sets that beta ext's derived line", rr.json().get("ok") is True, rr.text)
+    ck("/hook/now with a host session id sets that acking ext's derived line", rr.json().get("ok") is True, rr.text)
     obs = []
 
     async def observer():
@@ -421,7 +421,7 @@ async def run(tmp):
     # identity it presents. Eviction happens only when the incumbent is already dead.
     #
     # Identity deliberately does NOT appear in the rule. An earlier version let a matching session_id
-    # "replace its own socket" to avoid locking a lane out -- but b1's five holders shared one
+    # "replace its own socket" to avoid locking a lane out -- but that lane's five holders shared one
     # session_id, so that carve-out sent the real failure case into evict-and-replace and, since
     # teamline_feed retries close 4000, would have produced a five-way eviction ring every 2 s.
     # Liveness is measured by keepalives the broker RECEIVED, so a live incumbent cannot be a
@@ -448,7 +448,7 @@ async def run(tmp):
                     pass
 
         ok, det = await refused_by(TWS % (PORT, "sess-TWIN", "b"))
-        ck("a SECOND holder is refused even with the SAME identity -- b1's five all shared one "
+        ck("a SECOND holder is refused even with the SAME identity -- that lane's five all shared one "
            "session_id, so replacing on a match would have built an eviction ring", ok, det)
         ok2, det2 = await refused_by(TWS % (PORT, "sess-OTHER", "c"))
         ck("a second holder from a different session is refused too", ok2, det2)
@@ -541,7 +541,7 @@ async def run(tmp):
                 pass
 
     ids = [e["id"] for e in feeds["writer"] + feeds["review"] if e.get("kind") and not e.get("part")]
-    ck("no frame reaches a alpha feed twice (08:4x: a nudge arrived twice -- push vs retry sweep race)",
+    ck("no frame reaches a non-acking feed twice (08:4x: a nudge arrived twice -- push vs retry sweep race)",
        len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1][:3])
     for t in ft + [fs, ot, wt["deep"]]:
         t.cancel()

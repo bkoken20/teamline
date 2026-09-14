@@ -435,7 +435,7 @@ class Switchboard:
         sid = (sid or "").strip()
         if not sid:
             return None
-        # a alpha ext is bound by `sid` (feed); a beta ext by `session_id` (sw_register) --
+        # a non-acking ext is bound by `sid` (feed); an acking one by `session_id` (sw_register) --
         # beta 16:40: the hook matched only sid, so their watcher could never find their ext
         keys = lambda e: [k for k in (e.get("sid"), e.get("session_id")) if k]
         for e in self._ext.values():

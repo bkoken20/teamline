@@ -1,0 +1,56 @@
+<!doctype html><meta charset=utf-8><title>TEAMLINE</title>
+<style>
+body{font:14px/1.4 system-ui,sans-serif;margin:1.2em;background:#111;color:#ddd}
+h2{margin:.2em 0} .st{display:flex;gap:2em;margin:.6em 0}
+.p{padding:.5em .9em;border-radius:6px;background:#222;min-width:14em}
+.IDLE{border-left:5px solid #4c4} .RINGING{border-left:5px solid #fc0;animation:b 1s infinite}
+.IN_CALL{border-left:5px solid #39f} .BUSY{border-left:5px solid #f60} .OFFLINE,.GONE{border-left:5px solid #666} .STALE{opacity:.6} .CAPPED{border-left:5px solid #f0f}
+.p small{color:#999}
+@keyframes b{50%{background:#443}}
+pre{background:#1a1a1a;padding:.6em;white-space:pre-wrap;max-height:40vh;overflow:auto;border-radius:6px}
+#log div{font-family:ui-monospace,monospace;font-size:12px;padding:1px 0;border-bottom:1px solid #222}
+.say{color:#9cf} .ring{color:#fc0} .hangup,.decline,.ring_timeout{color:#f88} .delivered{color:#8c8}
+.delivery_failed{color:#f44} .voicemail,.voicemail_released{color:#c9f}
+input{width:40em;background:#222;color:#eee;border:1px solid #444;padding:.3em} button{padding:.3em .8em}
+#conn{float:right;color:#888}
+:root{--agents:max-content;--ledger:1fr}   /* operator 07:3x: the agents column is as wide as its widest 'said · seen · session' line, the ledger takes the rest */
+#main{display:grid;grid-template-columns:var(--agents) var(--ledger);gap:1.5em;height:calc(100vh - 4em)}
+#left{overflow:auto;max-width:45vw} #right{overflow:auto;display:flex;flex-direction:column} #right #log{flex:1;overflow:auto}
+.team{background:#181818;border-radius:8px;padding:.4em .8em}
+.col .p{width:100%;box-sizing:border-box} .col .p small{white-space:nowrap}   /* every card full panel width; the panel is as wide as the widest info line */
+.team h3{margin:.2em 0 .4em} .col{display:flex;flex-direction:column;gap:.4em} .col .p{min-width:0}
+.now{font-size:15px;color:#fff;margin:.15em 0;width:0;min-width:100%;white-space:normal;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}   /* wraps to two lines inside the card width */ .gone{color:#777} .vm{color:#c9f} .dup{color:#f66;font-weight:700} .teamhead{margin:.6em 0 .2em;color:#aaa}
+#calls{contain:inline-size;width:100%;box-sizing:border-box} #calls h3{white-space:normal;overflow-wrap:anywhere} #calls pre{overflow-wrap:anywhere}   /* inline-size containment: a call's contents cannot widen the max-content agents column (operator 11:4x; width:0/min-width:100% was not enough in a max-content track) */ details{margin-top:1em;color:#888}
+</style>
+<h2>TEAMLINE <span id=conn>connecting…</span></h2>
+<div id=main><div id=left><div class=team><h3>agents</h3><div id=dir-all class=col></div></div>
+<div id=calls></div>
+
+<form id=f onsubmit="return say()"><select id=cid></select> <input id=t placeholder="operator line into the selected call" autocomplete=off>
+<button>say</button> <span id=sayres></span></form>
+</div><div id=right><h3>ledger (live)</h3><div id=log></div></div></div>
+<script>
+const TS=t=>{const d=new Date(t*1000),p=n=>String(n).padStart(2,'0');return `${String(d.getFullYear()).slice(2)}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;};
+const LOC=s=>String(s??'').replace(/(\d{4}-\d\d-\d\d \d\d:\d\d) UTC\s*=\s*(\d{4}-\d\d-\d\d) (\d\d:\d\d) UTC[+-]\d+/g,(m,u,d,t)=>d.slice(2)+' '+t);
+const E=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function ages(s){s=Math.round(s);return s<90?s+'s':s<5400?Math.round(s/60)+' min':Math.round(s/3600)+' h';}
+const PREF=['alpha','beta','gamma'];
+const teamsOf=d=>[...new Set((d||[]).map(e=>e.team))].sort((a,b)=>((PREF.indexOf(a)+1||99)-(PREF.indexOf(b)+1||99))||a.localeCompare(b));
+function dir(d){let html='';for(const team of teamsOf(d)){const all=(d||[]).filter(e=>e.team===team);const rows=all.filter(e=>e.hygiene!=='GONE');const gone=all.filter(e=>e.hygiene==='GONE');
+ html+=`<h4 class=teamhead>${team}</h4>`+(gone.length?`<small class=gone>gone (retires 10 min after the feed drops): ${gone.map(e=>E(e.ext.split('/')[1])).join(', ')}</small>`:'')+rows.map(e=>`<div class="p ${e.state} ${e.hygiene}"><b>${E(e.ext.split('/')[1])}</b> — ${e.state}${e.busy_kind?` (${E(e.busy_kind)}: ${E(e.busy_reason)})`:''}${e.hygiene==='STALE'?' · STALE':''}${e.holders>1?` · <b class=dup>${e.holders} HOLDERS: every message delivered ${e.holders}x</b>`:''}
+ <div class=now>${E(e.now||'—')}</div><small>said ${ages(e.now_age_s)} ago${e.now_source==='derived'?' (derived)':''} · seen ${ages(e.last_seen_age_s)} ago · <span class=vm>voicemail: <b>${e.voicemail_held||0}</b> held · <b>${e.pending||0}</b> pending delivery</span></small></div>`).join('')||'<i>no sessions registered</i>';}document.getElementById('dir-all').innerHTML=html;}
+function calls(c,t){document.getElementById('calls').innerHTML=(c||[]).map(x=>`<h3>call ${E(x.call_id)} — ${E(x.subject)} (${x.state}) · ${E(x.caller)} → ${E(x.callee)}</h3><pre>${E(LOC((t||{})[x.call_id]||''))}</pre>`).join('');
+ const sel=document.getElementById('cid');const cur=sel.value;sel.innerHTML='<option value="">(pick a call)</option>'+(c||[]).map(x=>`<option value="${E(x.call_id)}">${E(x.call_id)} ${E(x.caller)}→${E(x.callee)}</option>`).join('');sel.value=cur;}
+function row(r){if(['liveness','touch','presence','feed'].includes(r.event))return;const d=document.createElement('div');d.className=r.event;
+ const x=Object.entries(r).filter(([k])=>!['event','ts','ts_both','msg_id','msg_ids'].includes(k)).map(([k,v])=>`${k}=${E(typeof v==='string'?v:JSON.stringify(v))}`).join(' · ');
+ d.textContent=`${TS(r.ts)}  ${r.event.toUpperCase()}  ${x}`;const l=document.getElementById('log');l.prepend(d);while(l.children.length>300)l.lastChild.remove();}
+function connect(){const ws=new WebSocket(`ws://${location.host}/ws?party=operator`);
+ ws.onopen=()=>{document.getElementById('conn').textContent='live';};
+ ws.onmessage=e=>{const m=JSON.parse(e.data);dir(m.directory);calls(m.calls,m.transcripts);
+  if(m.type==='snapshot'){document.getElementById('log').innerHTML='';m.rows.forEach(row);} else row(m.row);
+  if(m.row&&['ring','call'].includes(m.row.event))document.title='☎ RING — TEAMLINE'; else document.title='TEAMLINE';};
+ ws.onclose=()=>{document.getElementById('conn').textContent='reconnecting…';setTimeout(connect,2000);};}
+async function say(){const t=document.getElementById('t');const r=await fetch('/operator/say',{method:'POST',body:new URLSearchParams({text:t.value,call_id:document.getElementById('cid').value})});
+ const j=await r.json();document.getElementById('sayres').textContent=j.ok?'sent':('refused: '+j.error);if(j.ok)t.value='';return false;}
+connect();
+</script>

@@ -1,0 +1,31 @@
+# A single broker. There is deliberately no second replica: the ledger is one append-only file and
+# two brokers would mean two directories that cannot see each other.
+#
+#     docker compose -f deploy/docker-compose.yml up -d
+services:
+  teamline-broker:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: teamline-broker:1
+    container_name: teamline-broker
+    command: ["python", "/app/teamline/teamline_broker.py"]
+    environment:
+      TEAMLINE_TEAMS: "alpha,beta"
+      TEAMLINE_ROOT: "/data"
+      TEAMLINE_BIND: "0.0.0.0"
+      TEAMLINE_PORT: "3790"
+      # The container has no time zone of its own, so every ledger row would be stamped UTC in both
+      # halves of its `ts_both` field. Set this to the zone your operators actually read.
+      TZ: "UTC"
+    ports:
+      # 127.0.0.1 on the left is intentional: bind to loopback and reach it over your private
+      # network (a VPN interface, an SSH tunnel), rather than publishing an unauthenticated
+      # service on every interface the host owns.
+      - "127.0.0.1:3790:3790"
+    volumes:
+      - teamline-data:/data
+    restart: unless-stopped
+
+volumes:
+  teamline-data:

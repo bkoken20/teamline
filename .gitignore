@@ -1,0 +1,20 @@
+# The broker's own state. NEVER commit these: the ledger is an append-only record of every message
+# sent through the switchboard, and calls/ holds the full transcript of every call. Both contain
+# whatever the sessions actually said to each other.
+data/
+*.jsonl
+calls/
+broker_state.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,567 @@
+"""SWITCHBOARD end-to-end, the broker's host mode (inverted delivery): the real broker in-process,
+MCP clients as extensions (team by header, ext by argument), a WebSocket feed per extension, a FAKE
+BETA WATCHER standing in for their box (holds feeds with session_id, ACKS deliveries, sends
+keepalives carrying `running`), the observer feed for the operator page. The broker reaches no session's host: delivery into beta is inverted -- the watcher delivers and acks.
+
+Run: python tests/test_switchboard_e2e.py
+"""
+import asyncio
+import io
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+PKG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "teamline")
+sys.path.insert(0, PKG)
+# The suite defines the teams it exercises, so a fresh clone runs green with no setup. The library
+# ships with a different default; check 14 asserts that separately.
+os.environ.setdefault("TEAMLINE_TEAMS", "alpha,beta,gamma")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+FAILS = []
+PORT = 3792
+
+
+def ck(name, cond, detail=""):
+    print("  %s  %s%s" % ("PASS" if cond else "FAIL", name, "" if cond else "\n        [%s]" % (detail,)))
+    if not cond:
+        FAILS.append(name)
+
+
+async def run(tmp):
+    import httpx2
+    import uvicorn
+    import websockets
+    from mcp.client import Client
+    from mcp.client.streamable_http import streamable_http_client
+    import teamline_broker as B
+
+    app = B.build(root=tmp, ring_timeout_s=90, ack_timeout_s=1.0, feed_gone_s=2.0, state_every_s=0.5,
+                  backoff_s=1.0)
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=PORT, log_level="error"))
+    task = asyncio.create_task(server.serve())
+    for _ in range(50):
+        if server.started:
+            break
+        await asyncio.sleep(0.1)
+    url = "http://127.0.0.1:%d/mcp" % PORT
+
+    async def call(team, tool, **args):
+        hc = httpx2.AsyncClient(headers={"X-Teamline-Party": team}, timeout=httpx2.Timeout(30.0, read=130.0))
+        async with hc:
+            async with Client(streamable_http_client(url, http_client=hc)) as s:
+                res = await s.call_tool(tool, args)
+                txt = "".join(c.text for c in res.content if getattr(c, "text", None))
+                try:
+                    return json.loads(txt)
+                except Exception:
+                    return txt
+
+    # ---- alpha feeds (Claude sessions) -----------------------------------------------------
+    feeds = {"writer": [], "review": []}
+
+    async def feed(name, sink):
+        async with websockets.connect("ws://127.0.0.1:%d/ws?party=alpha&ext=%s&now=%s" % (PORT, name, name + "-work")) as ws:
+            async for m in ws:
+                sink.append(json.loads(m))
+    ft = [asyncio.create_task(feed("writer", feeds["writer"])), asyncio.create_task(feed("review", feeds["review"]))]
+
+    # ---- fake beta watcher: one process per box, one feed per extension ---------------------
+    delivered = {"deep": [], "ruler": []}          # what "session.prompt" would have received
+    running = {"deep": True, "ruler": False}
+    ack_mode = {"deep": True, "ruler": True}        # accepted flag the watcher answers with
+    parts = {}
+
+    async def watcher(name, session_id):
+        async with websockets.connect("ws://127.0.0.1:%d/ws?party=beta&ext=%s&now=%s&session_id=%s" % (PORT, name, name + "-now", session_id)) as ws:
+            async def pinger():
+                while True:
+                    await ws.send(json.dumps({"ping": 1, "running": running[name]}))
+                    await asyncio.sleep(0.4)
+            pt = asyncio.create_task(pinger())
+            try:
+                async for m in ws:
+                    ev = json.loads(m)
+                    if not ev.get("kind"):
+                        continue
+                    if ev.get("part"):
+                        buf = parts.setdefault(ev["id"], {})
+                        buf[ev["part"][0]] = ev["text"].split("] ", 1)[1]
+                        if len(buf) < ev["part"][1]:
+                            continue
+                        text = "".join(buf[i] for i in sorted(buf))
+                    else:
+                        text = ev["text"]
+                    delivered[name].append(dict(id=ev["id"], kind=ev["kind"], text=text, mode="steer" if running[name] else "queue"))
+                    await ws.send(json.dumps({"ack": ev["id"], "session_id": session_id, "accepted": ack_mode[name]}))
+            finally:
+                pt.cancel()
+    wt = {"deep": asyncio.create_task(watcher("deep", "sess-A")), "ruler": asyncio.create_task(watcher("ruler", "sess-B"))}
+    await asyncio.sleep(0.8)
+
+    # ---- v1 retired ---------------------------------------------------------------------------
+    r = await call("alpha", "line_status")
+    ck("the v1 team-level tools no longer exist", isinstance(r, str) and "unknown" in r.lower(), str(r)[:120])
+    try:
+        async with websockets.connect("ws://127.0.0.1:%d/ws?party=alpha" % PORT) as w1:
+            await asyncio.wait_for(w1.recv(), 2)
+        ck("a feed without an extension name is refused", False, "accepted")
+    except Exception:
+        ck("a feed without an extension name is refused", True)
+    async with httpx2.AsyncClient() as hc:
+        pg = (await hc.get("http://127.0.0.1:%d/" % PORT)).text
+    ck("the page carries no v1 team cards", "v1 line" not in pg and "id=parties" not in pg, pg[:100])
+    js = pg.split("<script>")[1].split("</script>")[0]
+    pr = subprocess.run(["node", "-e", "new Function(require('fs').readFileSync(0,'utf8'));console.log('ok')"],
+                        input=js, capture_output=True, text=True, encoding="utf-8")
+    ck("the page SCRIPT parses", pr.returncode == 0 and "ok" in pr.stdout, pr.stderr[-200:])
+
+    # ---- the page must RENDER every team in the directory, not a hard-coded pair (operator 09-08: gamma)
+    # page_probe.js runs the page's own dir() headlessly, so this is behaviour, not a grep.
+    def mk(ext, team, holders=1):
+        return dict(ext=ext, team=team, state="IDLE", hygiene="LIVE", now="n", now_age_s=1,
+                    now_source="model", busy_kind=None, busy_reason=None, last_seen_age_s=1,
+                    session_id=None, voicemail_held=0, pending=0, holders=holders)
+    probe_dir = os.path.join(tmp, "probe_directory.json")
+    probe_page = os.path.join(tmp, "probe_page.html")
+    with open(probe_page, "w", encoding="utf-8") as fh:
+        fh.write(pg)
+    with open(probe_dir, "w", encoding="utf-8") as fh:
+        json.dump([mk("alpha/aaa", "alpha"), mk("beta/bbb", "beta", holders=3),
+                   mk("gamma/ccc", "gamma")], fh)
+    probe_js = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_probe.js")
+    pr2 = subprocess.run(["node", probe_js, probe_page, probe_dir], capture_output=True, text=True, encoding="utf-8")
+    out = pr2.stdout
+    ck("the page RENDERS every team in the directory, gamma included (it iterated a hard-coded pair)",
+       pr2.returncode == 0 and all(t in out for t in ("alpha", "beta", "gamma"))
+       and all(n in out for n in ("aaa", "bbb", "ccc")), (pr2.stderr[-200:] or out[:200]))
+    # holders > 1 is a DEFECT STATE (every message delivered that many times) and was invisible on
+    # this page while beta/lane-alpha held five. The badge must render, and must NOT render at 1.
+    ck("the page flags an extension held by more than one feed, and stays silent at one holder",
+       "3 HOLDERS" in out and "1 HOLDERS" not in out, out[:240])
+
+    # ---- 15. a team the broker does not know must FAIL LOUDLY, never opaquely and never in a loop
+    # (operator 2026-09-08). Measured before the fix: sw_register answered only "Error executing tool
+    # sw_register" with no mention of teams, and the feed script retried HTTP 403 every 2 s forever.
+    r = await call("newteam", "sw_register", ext="probe", now="n", session_id="x")
+    err = str(r.get("error", "")) if isinstance(r, dict) else ""
+    ck("an unknown team gets a NAMED error from sw_register, not an opaque tool failure",
+       isinstance(r, dict) and "newteam" in err and "not enabled" in err, r)
+    # SECURITY (operator, 2026-09-08): the refusal must NOT enumerate the real teams -- a caller that
+    # guessed wrong would learn the valid names and could then present itself as one of them.
+    ck("the refusal does NOT disclose which teams exist",
+       not any(t in err for t in ("alpha", "beta", "gamma")), err[:200])
+    r = await call("newteam", "sw_directory")
+    ck("...and from sw_directory too", isinstance(r, dict) and "error" in r, r)
+    feed_py = os.path.join(PKG, "teamline_feed.py")
+    def _run_feed():                       # in a thread: a blocking run would stall the watcher's pings
+        return subprocess.run([sys.executable, feed_py, "--party", "newteam", "--ext", "probe", "--now", "n",
+                               "--url", "http://127.0.0.1:%d" % PORT],
+                              capture_output=True, text=True, encoding="utf-8", timeout=12)
+    try:
+        pf = await asyncio.to_thread(_run_feed)
+        out, rc, looped = pf.stdout, pf.returncode, False
+    except subprocess.TimeoutExpired as te:          # still running after 12 s = it is retrying forever
+        out, rc, looped = (te.stdout or b"").decode("utf-8", "replace") if isinstance(te.stdout, bytes) else (te.stdout or ""), None, True
+    lines = [l for l in out.splitlines() if l.strip()]
+    ck("the feed script STOPS on a refusal instead of retrying it forever, and says why",
+       not looped and rc not in (0, None) and len(lines) <= 2 and "refused" in out
+       and "team" in out and "enabled" in out,
+       ("LOOPED FOREVER" if looped else (rc, lines[:3])))
+
+    # SECURITY (2026-09-08, reported by alpha/lane-beta and reproduced here): the two clients
+    # read the TEAM FROM DIFFERENT PLACES. teamline_cli honours TEAMLINE_PARTY; teamline_feed knew only
+    # --party and fell back to "alpha". So a session told (quickstart §gamma) to export
+    # TEAMLINE_PARTY and then start its feed registered SILENTLY INTO ALPHA -- a cross-team
+    # registration with no error anywhere, which is the disguise outcome reached by accident. D2: the
+    # old design was correct only if every caller remembered a flag its sibling tool does not need.
+    def _run_feed_env():
+        env = dict(os.environ, TEAMLINE_PARTY="newteam")
+        return subprocess.run([sys.executable, feed_py, "--ext", "probe-env", "--now", "n",
+                               "--url", "http://127.0.0.1:%d" % PORT],
+                              capture_output=True, text=True, encoding="utf-8", timeout=8, env=env)
+    try:
+        pe = await asyncio.to_thread(_run_feed_env)
+        eout, erc, eheld = pe.stdout, pe.returncode, False
+    except subprocess.TimeoutExpired:
+        eout, erc, eheld = "", None, True      # still holding a socket = it registered as somebody
+    dnames = {e["ext"] for e in (await call("alpha", "sw_directory"))["extensions"]}
+    ck("the feed script takes its TEAM from TEAMLINE_PARTY, like the CLI -- it must never silently "
+       "fall back to alpha and register a foreign session into our team",
+       not eheld and erc == 3 and "alpha/probe-env" not in dnames,
+       ("registered as alpha/probe-env" if "alpha/probe-env" in dnames else
+        ("HELD THE SOCKET (registered under the fallback team)" if eheld else (erc, eout[:160]))))
+
+    # ---- the broker's host: a client arriving with a non-loopback Host header must be served (09:05: "Invalid Host header")
+    hc2 = httpx2.AsyncClient(headers={"X-Teamline-Party": "alpha", "Host": "10.0.0.2:3790"}, timeout=httpx2.Timeout(30.0))
+    async with hc2:
+        async with Client(streamable_http_client(url, http_client=hc2)) as s2:
+            res = await s2.call_tool("sw_directory", {})
+            txt = "".join(c.text for c in res.content if getattr(c, "text", None))
+    ck("the MCP endpoint serves a client whose Host header is the the broker's host address (DNS-rebinding guard off)",
+       "extensions" in txt, txt[:120])
+
+    # ---- standalone: the broker pulls in nothing from its author's tree ------------------------------
+    # The default root is RELATIVE and created at startup, so it need not exist at import time. What
+    # must hold is that it is a USABLE path: an escaped backslash-t once put a literal TAB in this
+    # default, and the broker then wrote its ledger into a directory nobody could find.
+    ck("the broker's default root is a usable path (no control characters, no stray whitespace)",
+       bool(B.ROOT) and not any(c in B.ROOT for c in "\t\r\n") and B.ROOT.strip() == B.ROOT, repr(B.ROOT))
+    _probe_root = os.path.join(tmp, "made", "on", "demand")
+    os.makedirs(_probe_root, exist_ok=True)
+    ck("...and a nested root that does not yet exist is created rather than crashing the broker",
+       os.path.isdir(_probe_root), _probe_root)
+    # NO HIDDEN DEPENDENCIES. Every third-party import in the package must be one this project
+    # actually declares, so a clone installs what requirements.txt says and nothing else. Read from
+    # the source rather than sys.modules, which would only show what this test happened to import.
+    import ast
+    declared = {"mcp", "starlette", "uvicorn", "websockets", "httpx2", "anyio"}
+    stdlib = set(getattr(sys, "stdlib_module_names", ()))
+    undeclared = {}
+    for _mod in sorted(os.listdir(PKG)):
+        if not _mod.endswith(".py"):
+            continue
+        _tree = ast.parse(io.open(os.path.join(PKG, _mod), encoding="utf-8").read())
+        _local = {f[:-3] for f in os.listdir(PKG) if f.endswith(".py")}
+        for _n in ast.walk(_tree):
+            if isinstance(_n, ast.Import):
+                _names = [a.name.split(".")[0] for a in _n.names]
+            elif isinstance(_n, ast.ImportFrom):
+                _names = [(_n.module or "").split(".")[0]]
+            else:
+                continue
+            for _name in _names:
+                if _name and _name not in stdlib and _name not in declared and _name not in _local:
+                    undeclared.setdefault(_mod, set()).add(_name)
+    ck("the package imports nothing it does not declare (no hidden dependencies)",
+       not undeclared, {k: sorted(v) for k, v in undeclared.items()})
+
+    # ---- directory + liveness from keepalives ---------------------------------------------------
+    d = {e["ext"]: e for e in (await call("alpha", "sw_directory"))["extensions"]}
+    ck("the directory lists all four extensions with now + age",
+       set(d) == {"beta/deep", "beta/ruler", "alpha/writer", "alpha/review"} and all("now_age_s" in e for e in d.values()), sorted(d))
+    ck("keepalive running=true shows BUSY(turn), running=false IDLE (liveness from the watcher, no host poll)",
+       d["beta/deep"]["state"] == "BUSY" and d["beta/deep"]["busy_kind"] == "turn" and d["beta/ruler"]["state"] == "IDLE", d)
+    ck("a beta ext bound to a session id and a feed is LIVE", d["beta/deep"]["hygiene"] == "LIVE" and d["beta/deep"]["session_id"] == "sess-A", d["beta/deep"])
+
+    # ---- calls: delivery by the watcher, ack marks delivered --------------------------------------
+    r1 = await call("alpha", "sw_call", ext="writer", peer="beta/deep", subject="depth", opening="numbers?")
+    r2 = await call("alpha", "sw_call", ext="review", peer="beta/ruler", subject="ruler", opening="ready?")
+    ck("two calls ring concurrently", r1.get("state") == "RINGING" and r2.get("state") == "RINGING", (r1, r2))
+    await asyncio.sleep(0.8)
+    ck("each ring reached ITS watcher feed: deep as steer (running), ruler as queue (idle)",
+       any(x["kind"] == "ring" and "depth" in x["text"] and x["mode"] == "steer" for x in delivered["deep"])
+       and any(x["kind"] == "ring" and "ruler" in x["text"] and x["mode"] == "queue" for x in delivered["ruler"]), delivered)
+    ledger = lambda: [json.loads(l) for l in open(os.path.join(tmp, "switchboard.jsonl"), encoding="utf-8") if l.strip()]
+    ck("the watcher's ack marks the ring delivered WITH its session id (host-accepted once)",
+       any(e["event"] == "delivered" and e["session_id"] == "sess-A" for e in ledger()), [e for e in ledger() if e["event"] == "delivered"][-2:])
+    ck("the caller got the machine ring_delivered signal after the ack",
+       any(e.get("kind") == "ring_delivered" for e in feeds["writer"]), feeds["writer"][-2:])
+    await call("beta", "sw_answer", ext="deep")
+    await call("beta", "sw_answer", ext="ruler")
+    await call("beta", "sw_say", ext="deep", text="depth line")
+    await call("beta", "sw_say", ext="ruler", text="ruler line")
+    await asyncio.sleep(0.5)
+    ck("feed frames route by extension: writer got only the depth line, f1 only the ruler line",
+       any(e.get("kind") == "say" and "depth line" in e["text"] for e in feeds["writer"])
+       and not any("ruler line" in e.get("text", "") for e in feeds["writer"])
+       and any(e.get("kind") == "say" and "ruler line" in e.get("text", "") for e in feeds["review"])
+       and not any("depth line" in e.get("text", "") for e in feeds["review"]), (feeds["writer"][-1:], feeds["review"][-1:]))
+    long = "L" + ("0123456789" * 90)
+    await call("alpha", "sw_say", ext="writer", text=long)
+    await asyncio.sleep(0.8)
+    ck("a long line reaches the watcher as parts and is delivered CONCATENATED (beta buffers parts), acked once",
+       any(x["kind"] == "say" and x["text"].endswith(long) for x in delivered["deep"])
+       and sum(1 for e in ledger() if e["event"] == "delivered" and e["session_id"] == "sess-A") == len(delivered["deep"]), (len(delivered["deep"]),))
+    await call("alpha", "sw_say", ext="writer", text="thanks depth")
+    await asyncio.sleep(0.4)
+    ck("a alpha line goes to its peer's watcher only",
+       any("thanks depth" in x["text"] for x in delivered["deep"]) and not any("thanks depth" in x["text"] for x in delivered["ruler"]))
+    # ack refused / no ack
+    ack_mode["ruler"] = False
+    await call("alpha", "sw_say", ext="review", text="refused line")
+    await asyncio.sleep(0.5)
+    ck("an ack with accepted:false is ledgered delivery_failed, message stays pending",
+       any(e["event"] == "delivery_failed" and "refused" in e.get("error", "") for e in ledger())
+       and any(e["ext"] == "beta/ruler" and e["pending"] >= 1 for e in (await call("alpha", "sw_directory"))["extensions"]), [e for e in ledger() if e["event"] == "delivery_failed"][-1:])
+    ack_mode["ruler"] = True
+    r = await call("alpha", "sw_hangup", ext="writer", summary="depth done")
+    ck("hangup writes the transcript", r.get("state") == "IDLE" and os.path.exists(r.get("transcript", "")), r)
+    await call("alpha", "sw_hangup", ext="review", summary="ruler done")
+
+    # ---- unreachable: sw_register without a feed --------------------------------------------------
+    r = await call("beta", "sw_register", ext="lonely", now="no watcher", session_id="sess-L")
+    d = {e["ext"]: e for e in (await call("alpha", "sw_directory"))["extensions"]}
+    ck("a beta ext registered WITHOUT a feed is UNREACHABLE (no watcher can deliver)", d["beta/lonely"]["hygiene"] == "UNREACHABLE", d.get("beta/lonely"))
+    r = await call("alpha", "sw_call", ext="writer", peer="beta/lonely", subject="s", opening="o")
+    ck("a call to it is refused into voicemail (rule 9), held until a feed appears", r.get("state") == "UNREACHABLE" and r.get("voicemail_queued"), r)
+
+    # ---- feed silence -> GONE, open call -> peer_lost ---------------------------------------------
+    await call("alpha", "sw_call", ext="review", peer="beta/ruler", subject="again", opening="o")
+    await asyncio.sleep(0.5)
+    await call("beta", "sw_answer", ext="ruler")
+    wt["ruler"].cancel()
+    await asyncio.sleep(2.8)
+    d = {e["ext"]: e for e in (await call("alpha", "sw_directory"))["extensions"]}
+    ck("a watcher feed that goes silent/closes makes the ext GONE and ends its open call as peer_lost",
+       d["beta/ruler"]["hygiene"] == "GONE" and d["alpha/review"]["state"] == "IDLE"
+       and any(e["event"] == "peer_lost" for e in ledger()), (d.get("beta/ruler"), d.get("alpha/review")))
+
+    # ---- state file + healthz (DM's liveness line) -------------------------------------------------
+    sf = os.path.join(tmp, "broker_state.json")
+    ck("the broker writes broker_state.json for the DM tab (ts, up, port, extensions, calls)",
+       os.path.exists(sf) and set(json.load(open(sf))) >= {"ts", "ts_local", "up", "port", "extensions", "calls"}, sf)
+    async with httpx2.AsyncClient() as hc:
+        hz = await hc.get("http://127.0.0.1:%d/healthz" % PORT)
+    ck("/healthz answers with CORS for a cross-origin fetch", hz.status_code == 200 and hz.headers.get("access-control-allow-origin") == "*" and hz.json().get("up") is True, dict(hz.headers))
+
+    # ---- hook path + observer ------------------------------------------------------------------------
+    sid_feed = []
+
+    async def feed_sid():
+        async with websockets.connect("ws://127.0.0.1:%d/ws?party=alpha&ext=hooked&now=first&sid=csid-1" % PORT) as ws:
+            async for m in ws:
+                sid_feed.append(json.loads(m))
+    fs = asyncio.create_task(feed_sid())
+    await asyncio.sleep(0.3)
+    async with httpx2.AsyncClient() as hc:
+        rr = await hc.post("http://127.0.0.1:%d/hook/now" % PORT, json={"session_id": "csid-1", "text": "Build the hook side"})
+    d = {e["ext"]: e for e in (await call("alpha", "sw_directory"))["extensions"]}
+    ck("POST /hook/now with the feed's sid sets the derived now line", rr.status_code == 200 and d["alpha/hooked"]["now"] == "Build the hook side", d.get("alpha/hooked"))
+    async with httpx2.AsyncClient() as hc:
+        rr = await hc.post("http://127.0.0.1:%d/hook/now" % PORT, json={"session_id": "sess-A", "text": "beta watcher line"})
+    ck("/hook/now with a the host session id sets that beta ext's derived line", rr.json().get("ok") is True, rr.text)
+    obs = []
+
+    async def observer():
+        async with websockets.connect("ws://127.0.0.1:%d/ws?party=operator" % PORT) as ws:
+            async for m in ws:
+                obs.append(json.loads(m))
+    ot = asyncio.create_task(observer())
+    await asyncio.sleep(0.4)
+    ck("the operator observer snapshot carries the directory and active calls",
+       obs and obs[0].get("type") == "snapshot" and "directory" in obs[0] and "calls" in obs[0], obs[:1])
+    # ---- A SILENT ACKING HOLDER IS RE-PUSHED FOREVER (the gamma trap, 2026-09-14). Passing
+    # session_id makes a feed an ACKING one (`acking()` = bool(session_of(ext))), and the broker then
+    # keeps the message in the outbox until an ack arrives. teamline_feed.py sends only {"ping":1} and
+    # NEVER acks -- so a lane started with --session-id receives the same message again every
+    # ack_timeout + backoff, for as long as it is up. On a harness that wakes the agent per frame that
+    # is an unbounded wake loop. The cure is to pass `sid` instead (a NON-acking feed: a frame sent IS
+    # delivered), which is why TEAMLINE_SESSION_QUICKSTART.md's gamma line was corrected.
+    silent = []
+
+    async def silent_holder(seconds):
+        async with websockets.connect(
+                "ws://127.0.0.1:%d/ws?party=gamma&ext=silent&now=holding&session_id=sess-GAMMA" % PORT) as ws:
+            end = asyncio.get_event_loop().time() + seconds
+            try:
+                while asyncio.get_event_loop().time() < end:
+                    m = await asyncio.wait_for(anext(aiter(ws)), seconds)
+                    ev = json.loads(m)
+                    if ev.get("kind"):                       # a real message, never acked back
+                        silent.append(ev["id"])
+            except (asyncio.TimeoutError, StopAsyncIteration):
+                return
+    sh = asyncio.create_task(silent_holder(3.0))
+    await asyncio.sleep(0.4)
+    await call("alpha", "sw_leave", ext="writer", peer="gamma/silent", text="does this repeat?")
+    await sh
+    ck("an acking holder that never acks is re-pushed the SAME message repeatedly (the gamma trap)",
+       len(silent) > 1 and len(set(silent)) == 1, dict(pushes=len(silent), distinct=len(set(silent))))
+
+    # ---- the standby-holder hazard, at the WS layer (beta's nuance, 2026-09-06: "the broker
+    # attach IS a register, so the drain path is live on our attach too"). Confirmed here against
+    # our own broker: /ws for an ext that does not exist falls to sb.register(), which releases
+    # held voicemail, and the attaching socket is then handed everything pending. So a standby
+    # holder takes the mail the real session was meant to get. See TEAMLINE_PROTOCOL.md 7 and
+    # test_switchboard.py 13 -- this is the SAME hazard reached by a different door.
+    await call("alpha", "sw_leave", ext="writer", peer="alpha/absent-overnight",
+               text="left while the box was off")
+    standby, real = [], []
+
+    async def hold(sink, until=None, seconds=3.0):
+        """Read frames until `until(sink)` is satisfied, or `seconds` elapse. A FIXED window flaked
+        once on 2026-09-08 and sent the reader hunting a park-safe register() that nobody wrote --
+        a load-bearing hazard check must not cry wolf, so waiting for the CONDITION is the rule."""
+        deadline = asyncio.get_running_loop().time() + seconds
+        async with websockets.connect(
+                "ws://127.0.0.1:%d/ws?party=alpha&ext=absent-overnight&now=standby" % PORT) as ws:
+            it = aiter(ws)
+            try:
+                while True:
+                    left = deadline - asyncio.get_running_loop().time()
+                    if left <= 0:
+                        return
+                    ev = json.loads(await asyncio.wait_for(anext(it), left))
+                    # Do NOT assume the registration frame arrives FIRST: a pending voicemail push can
+                    # win that race, and consuming "the first frame" then SWALLOWS the very message this
+                    # check is looking for (seen 2026-09-08, sink held only the registered frame).
+                    if ev.get("type") == "registered":
+                        continue
+                    sink.append(ev)
+                    if until and until(sink):
+                        return
+            except (asyncio.TimeoutError, StopAsyncIteration):
+                return
+    await hold(standby, until=lambda s: any("left while the box was off" in (e.get("text") or "") for e in s))
+    ck("a standby attaching to a lane that is not registered DRAINS its held voicemail",
+       any("left while the box was off" in (e.get("text") or "") for e in standby),
+       [e.get("text", "")[:50] for e in standby])
+    await hold(real, seconds=1.0)     # proving ABSENCE: no predicate, a fixed window is inherent
+    ck("...and the session that attaches next receives nothing (delivered once, wrong holder)",
+       not any("left while the box was off" in (e.get("text") or "") for e in real),
+       [e.get("text", "")[:50] for e in real])
+
+    # ---- ONE HOLDER PER EXTENSION (operator, 2026-09-08: "adopt refuse-second-holder").
+    # push() fans every event out to all holders, so N holders = N copies while the ledger records
+    # ONE delivery -- measured live: lane-alpha held FIVE, and no msg_id in 2,743 rows had a second
+    # `delivered` row. The rule is: a LIVE incumbent is NEVER evicted; a newcomer is refused whatever
+    # identity it presents. Eviction happens only when the incumbent is already dead.
+    #
+    # Identity deliberately does NOT appear in the rule. An earlier version let a matching session_id
+    # "replace its own socket" to avoid locking a lane out -- but b1's five holders shared one
+    # session_id, so that carve-out sent the real failure case into evict-and-replace and, since
+    # teamline_feed retries close 4000, would have produced a five-way eviction ring every 2 s.
+    # Liveness is measured by keepalives the broker RECEIVED, so a live incumbent cannot be a
+    # half-open socket: if pings are still arriving, the newcomer is a surplus process, not a return.
+    TWS = "ws://127.0.0.1:%d/ws?party=beta&ext=twin&session_id=%s&now=twin-%s"
+    tw1 = await websockets.connect(TWS % (PORT, "sess-TWIN", "a"))
+    await asyncio.sleep(0.2)
+    try:
+        async def refused_by(url):
+            """Connect and report whether the broker refused with its holder message."""
+            try:
+                w = await websockets.connect(url)
+            except Exception:
+                return True, "handshake rejected"
+            try:
+                ev = json.loads(await asyncio.wait_for(w.recv(), 2.0))
+                return bool(ev.get("error")) and "holder" in str(ev.get("error", "")).lower(), ev
+            except Exception as ex:
+                return True, repr(ex)[:80]
+            finally:
+                try:
+                    await w.close()
+                except Exception:
+                    pass
+
+        ok, det = await refused_by(TWS % (PORT, "sess-TWIN", "b"))
+        ck("a SECOND holder is refused even with the SAME identity -- b1's five all shared one "
+           "session_id, so replacing on a match would have built an eviction ring", ok, det)
+        ok2, det2 = await refused_by(TWS % (PORT, "sess-OTHER", "c"))
+        ck("a second holder from a different session is refused too", ok2, det2)
+
+        row = {e["ext"]: e for e in (await call("alpha", "sw_directory"))["extensions"]}.get("beta/twin", {})
+        ck("the lane reports exactly one holder throughout", row.get("holders") == 1,
+           {k: row.get(k) for k in ("ext", "holders", "hygiene")})
+
+        # the INCUMBENT must be untouched -- refusing the newcomer is worthless if we killed the
+        # holder doing the work
+        await call("alpha", "sw_leave", ext="writer", peer="beta/twin", text="twin-probe")
+        seen = 0
+        try:
+            deadline = asyncio.get_running_loop().time() + 3.0
+            while asyncio.get_running_loop().time() < deadline:
+                ev = json.loads(await asyncio.wait_for(tw1.recv(), 1.0))
+                if "twin-probe" in (ev.get("text") or ""):
+                    seen += 1
+        except Exception:
+            pass
+        ck("the incumbent keeps the lane and receives the message exactly ONCE", seen == 1, seen)
+
+        # THE REFUSAL MUST BE RETRYABLE, and this is the whole safety argument. A half-open
+        # incumbent reads LIVE for up to feed_gone_s, so a genuine reconnect is indistinguishable
+        # from a surplus for that window. Refusing it fatally costs the lane its line until a human
+        # relaunches the watcher -- and a session with no line cannot be rung to be told.
+        w = await websockets.connect(TWS % (PORT, "sess-TWIN", "d"))
+        payload = json.loads(await asyncio.wait_for(w.recv(), 2.0))
+        try:
+            await asyncio.wait_for(w.recv(), 2.0)
+        except Exception:
+            pass
+        ck("the second-holder refusal is RETRYABLE, not the fatal 4001 -- a reconnect behind a "
+           "half-open socket must not lose its line",
+           payload.get("retryable") is True and w.close_code == 4003, (payload, w.close_code))
+        await w.close()
+
+        # ...and the CLIENT must honour that: back off, never exit. teamline_feed exits 3 on a fatal
+        # refusal, which would strand this lane.
+        feed_py2 = os.path.join(PKG, "teamline_feed.py")
+
+        def _run_busy():
+            return subprocess.run([sys.executable, feed_py2, "--party", "beta", "--ext", "twin",
+                                   "--session-id", "sess-TWIN", "--now", "n",
+                                   "--url", "http://127.0.0.1:%d" % PORT],
+                                  capture_output=True, text=True, encoding="utf-8", timeout=8)
+        try:
+            pb = await asyncio.to_thread(_run_busy)
+            bout, brc, alive = pb.stdout, pb.returncode, False
+        except subprocess.TimeoutExpired as te:
+            raw = te.stdout or ""
+            bout = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+            brc, alive = None, True
+        ck("the feed client BACKS OFF on a busy lane instead of exiting (exit 3 would strand it)",
+           alive and "holder_busy" in bout, (brc, bout[:160]))
+    finally:
+        try:
+            await tw1.close()
+        except Exception:
+            pass
+
+    # NO LOCKOUT: once the incumbent stops keepaliving it is presumed half-open, and the next
+    # connection reclaims the lane. Without this a lane sits unreachable behind a dead socket until
+    # the 10-minute retire -- a worse failure than the duplication the rule prevents.
+    anon = "ws://127.0.0.1:%d/ws?party=alpha&ext=anon-lane&now=first" % PORT
+    a1 = await websockets.connect(anon)
+    await asyncio.sleep(2.6)                     # past feed_gone_s (2.0) with no keepalive
+    a2 = await websockets.connect(anon)
+    try:
+        got = json.loads(await asyncio.wait_for(a2.recv(), 3.0))
+        ck("a feed reclaims its lane once the previous holder is dead (the rule must not lock a "
+           "lane out)", got.get("type") == "registered", got)
+        dead_closed = False
+        try:
+            deadline = asyncio.get_running_loop().time() + 3.0
+            while asyncio.get_running_loop().time() < deadline:
+                await asyncio.wait_for(a1.recv(), 1.0)
+        except Exception:
+            dead_closed = True
+        ck("...and the dead holder's socket is closed, so it cannot linger as a second reader",
+           dead_closed)
+    except Exception as ex:
+        ck("a feed reclaims its lane once the previous holder is dead (the rule must not lock a "
+           "lane out)", False, repr(ex)[:120])
+    finally:
+        for w in (a1, a2):
+            try:
+                await w.close()
+            except Exception:
+                pass
+
+    ids = [e["id"] for e in feeds["writer"] + feeds["review"] if e.get("kind") and not e.get("part")]
+    ck("no frame reaches a alpha feed twice (08:4x: a nudge arrived twice -- push vs retry sweep race)",
+       len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1][:3])
+    for t in ft + [fs, ot, wt["deep"]]:
+        t.cancel()
+    server.should_exit = True
+    await task
+
+
+def main():
+    import logging
+    logging.getLogger("httpx2").setLevel(logging.WARNING)
+    print("TEST -- switchboard end-to-end, the broker's host mode (fake beta watcher delivers + acks)\n")
+    tmp = tempfile.mkdtemp(prefix="sb_e2e_")
+    asyncio.run(run(tmp))
+    print()
+    if FAILS:
+        print("FAILED %d: %s" % (len(FAILS), FAILS))
+        return 1
+    print("ALL PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

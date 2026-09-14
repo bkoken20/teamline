@@ -1,0 +1,15 @@
+# Pins are what the broker has actually been run on in production, not the newest available.
+# Tested on Python 3.13.1.
+#
+# The broker needs all four. A client that only holds a feed needs `websockets` alone; a client
+# that calls the sw_* tools over MCP also needs `mcp` (which brings httpx2 with it).
+mcp==2.1.1
+starlette==1.6.0
+uvicorn[standard]==0.34.0
+websockets==16.1.1
+
+# uvicorn's [standard] extra is not optional: the feed is a WebSocket, and the plain distribution
+# starts cleanly and then refuses every /ws upgrade -- a broker that is up and answers nothing.
+#
+# The end-to-end suite additionally shells out to `node` to parse and run the operator page's own
+# script. Without node on PATH those two checks fail; the rest of the suite does not need it.

@@ -901,6 +901,43 @@ about whether the check executes. A check is only verified by running it where i
 
 ---
 
+## V-1 — the command this README advertises fails on a fresh clone
+
+**Severity:** high. It is the project's strongest evidence about itself, and it worked only for the
+people who wrote it.
+
+**What was wrong.** `python tests/test_perturbations.py` exits 1 on a fresh clone on Windows,
+reporting that a claim "no longer describes the repository". The code it looks for is present. Five
+of the runner's needles embed a newline; git checks out CRLF wherever `core.autocrlf` is true, which
+is the Windows default; the needles cannot match. The runner is telling the truth about the file it
+was handed.
+
+**Why nothing caught it.** Every run happened in a working tree git had never re-checked out — files
+written by editors as LF stayed LF. Measured: a fresh clone is **823 CRLF / 0 LF** for one module; the
+development tree is **0 CRLF / 823 LF**. The defect is invisible from inside that tree by construction
+and appears for every reader who clones. It was found by a check that runs the suites against a clone
+rather than against the working copy, which is the only place it exists.
+
+**The fix, and the alternative that lost.** `.gitattributes` with `* text=auto eol=lf`, so that every
+checkout matches the tree the suite is developed and passes in.
+
+The alternative was to make the perturbation matcher line-ending agnostic — normalise on compare,
+preserve on write. It was rejected on a count: it fixes the five needles and leaves the cause, and the
+same suite holds twelve further byte-sensitive reads that would meet the same mismatch. Its one real
+advantage is independence from the reader's git honouring attributes; git applies them on clone and on
+archive alike, so that advantage is small. `eol=lf` rather than `text=auto` alone, because `text=auto`
+normalises what is *stored* while the working tree still comes out CRLF — which is the exact
+configuration the defect needs.
+
+**What this also closes.** The open-findings section recorded "no `.gitattributes`" as *latent, not
+present*. That judgement was wrong: it was actively breaking the advertised command for every reader.
+
+**The check.** A fresh clone is made, its checked-out line endings measured, and the advertised command
+run inside it. It passes only if the clone is LF **and** that command exits 0 — neither of which can
+be established from the working tree.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -909,7 +946,7 @@ and the open ones live in somebody's memory until they do not.
 
 | finding | state |
 |---|---|
-| No `.gitattributes`. The index is pure LF today across all 20 tracked files, but a contributor whose git normalises differently can commit CRLF and produce a diff that touches every line. Latent, not present. | open |
+| ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
 | 153 of the 178 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

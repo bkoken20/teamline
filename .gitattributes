@@ -1,0 +1,16 @@
+# Normalise line endings, so that a CLONE matches the tree this repository is developed and tested in.
+#
+# Without this, git checks out CRLF on Windows while the working tree here is LF. Five of the
+# perturbation runner's needles embed a newline, so on a fresh clone they cannot match, and
+# `python tests/test_perturbations.py` -- the command the README advertises, and this project's
+# strongest evidence about itself -- fails for every reader who clones and for nobody who wrote it.
+#
+# `eol=lf` rather than `text=auto` alone: `text=auto` normalises what is stored, but the working tree
+# still comes out CRLF wherever core.autocrlf is true, which is the Windows default and is exactly
+# the configuration the defect appears in.
+#
+# The alternative considered and rejected was making the perturbation matcher line-ending agnostic.
+# It fixes the five needles and leaves the cause: twelve further byte-sensitive reads in the same
+# suite, and every future one, would still meet a checkout that differs from the tree they were
+# written against. Recorded in docs/FIX_LOG.md.
+* text=auto eol=lf

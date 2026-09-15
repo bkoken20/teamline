@@ -8,6 +8,7 @@ directory snapshot, then pull only; ledger is the source of truth. v1 (teamline_
 Run: python tests/test_switchboard.py
 """
 import asyncio
+import json
 import os
 import sys
 import tempfile
@@ -572,6 +573,42 @@ def main():
     ck("...which frees the caller's lane to be used again",
        sr.call("alpha", "ringer", "beta/midturn", "s2", "o2")["call_id"] is not None,
        dirmap(sr)["alpha/ringer"]["state"])
+
+    # ---- nothing a client sends may grow without bound.
+    # Receipts were capped at 300, now-lines at NOW_MAX, delivery errors at 300 -- but `say` and
+    # `leave`, the two paths that actually carry content, took whatever they were given. One caller
+    # could write a row of any size into an append-only ledger that is replayed into memory at every
+    # start. And `_rows` kept EVERY row forever to serve a 200-row operator snapshot.
+    SBb, sb2, cb = fresh(tempfile.mkdtemp(prefix="sb_"))
+    sb2.register("alpha", "big", now="n", feed=True)
+    sb2.register("alpha", "recv", now="n", feed=True)
+    huge = "x" * (SBb.TEXT_MAX + 1)
+    try:
+        sb2.leave("alpha", "big", "alpha/recv", huge)
+        ck("an over-long message is refused rather than silently truncated", False, "accepted")
+    except SBb.SwitchError as e:
+        ck("an over-long message is refused rather than silently truncated",
+           str(SBb.TEXT_MAX) in str(e), str(e)[:120])
+    ok = sb2.leave("alpha", "big", "alpha/recv", "x" * SBb.TEXT_MAX)
+    ck("...and a message exactly at the limit is accepted", ok["queued"] is True, ok)
+    for i in range(SBb.ROWS_KEPT + 50):
+        sb2.set_now("alpha", "big", "line %d" % i)
+    ck("the in-memory ledger is bounded, however long the broker runs",
+       len(sb2.ledger_rows()) <= SBb.ROWS_KEPT, len(sb2.ledger_rows()))
+    ck("...and it keeps the NEWEST rows, which is what the operator page shows",
+       "line %d" % (SBb.ROWS_KEPT + 49) in json.dumps(sb2.ledger_rows()[-1]),
+       sb2.ledger_rows()[-1])
+    # THE PROPERTY THE BOUND COULD HAVE BROKEN. The file stays the source of truth: replay reads
+    # every row and applies it, and only what is RETAINED afterwards is capped. An extension
+    # registered long before the window must still exist after a restart.
+    deep = tempfile.mkdtemp(prefix="sb_")
+    SBv, sv3, _ = fresh(deep)
+    sv3.register("alpha", "survivor", now="registered at the very start", feed=True)
+    for i in range(SBv.ROWS_KEPT + 100):
+        sv3.set_now("alpha", "survivor", "line %d" % i)
+    SBw, sw3, _ = fresh(deep)                       # same ledger, fresh broker
+    ck("replay still rebuilds state from rows older than the memory window",
+       "alpha/survivor" in dirmap(sw3), sorted(dirmap(sw3)))
 
     # ---- 8. wait buffering
     async def wcase():

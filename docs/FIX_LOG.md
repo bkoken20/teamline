@@ -387,3 +387,39 @@ Perturbing the outer bound away turns the check red.
 
 **Verified by.** Both suites green on exit codes; two checks, the second asserting the caller's lane
 is usable again afterwards, since freeing the lane is the point rather than ending the call.
+
+---
+
+## A8 — unbounded growth a single client could drive
+
+**Severity:** medium. Not an exploit so much as an absent limit, which in a long-running service is
+the same thing eventually.
+
+**What was wrong.** Two separate leaks.
+
+*Message text was uncapped on exactly the paths that carry content.* Receipts were capped at 300
+characters, now-lines at 200, delivery errors at 300 — but `say` and `leave` took whatever they were
+given. One caller could write a row of any size into an append-only ledger that is replayed into
+memory at every start.
+
+*Every ledger row was retained in memory forever.* `_rows` grew without bound for the life of the
+broker, and its only reader was the operator snapshot, which takes the last 200.
+
+**The fix.** A message longer than `TEXT_MAX` is **refused**, not truncated. Silently cutting a
+message in a messaging system loses meaning without telling anyone, while a client that is told the
+limit can split. That is a deliberate departure from the truncation used elsewhere in this file,
+where the values are status lines rather than content. And `_rows` is now a bounded deque, so what is
+*retained* is capped while the file stays the source of truth.
+
+**What attacking the fix found.** The obvious way to get this wrong is to bound the wrong thing and
+break replay. Checked directly: a ledger of 5,201 rows, with the extension registered at row 1, and
+a fresh broker over the same file — the extension survives, because replay applies every row and only
+retention is capped. That property is now a check of its own, since it is the one the fix could have
+destroyed.
+
+Both bounds perturbed independently, each turns its own check red.
+
+**What this does NOT fix, stated plainly.** The ledger **file** is still unbounded. It is the source
+of truth and is replayed in full at startup, so a broker that runs for years will start slowly and
+hold a large working set. Compaction — folding old rows into a checkpoint — is not implemented. If
+you run this at volume, that is the next thing to build, and nobody has overlooked it.

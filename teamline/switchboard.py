@@ -15,6 +15,7 @@ import sys
 import time
 import uuid
 
+import collections
 import datetime as _dt
 import tempfile
 
@@ -46,6 +47,16 @@ NOW_MODEL_WINS_S, RING_TIMEOUT_S = 30 * 60, 90
 # sessions could answer at once rather than by picking a number.
 CAP_INTO_DEFAULT = {}
 NUDGE_S, CALL_CAP_S = 5 * 60, 2 * 3600
+# What a client may send in one message. Receipts, now-lines and delivery errors were already
+# capped; `say` and `leave` -- the two paths that actually carry content -- were not, so one caller
+# could write a row of any size into an append-only ledger that is replayed into memory at every
+# start. Over-long text is REFUSED rather than truncated: silently cutting a message in a messaging
+# system loses meaning without telling anyone, and a client that is told the limit can split.
+TEXT_MAX = 4000
+# How many ledger rows stay in memory. The file remains the source of truth and is replayed in full;
+# this bounds only what is RETAINED, which existed solely to serve a 200-row operator snapshot.
+# NOTE: the ledger FILE is still unbounded. Compaction is not implemented -- see docs/FIX_LOG.md.
+ROWS_KEPT = 5000
 NOW_MAX = 200                                     # now-line cap (operator 2026-09-03 07:3x: raised from 120)          # etiquette (operator 2026-09-02): silence nudges, orphan cap
 
 
@@ -87,7 +98,7 @@ class Switchboard:
         self.ledger_path, self.calls_dir, self.now = ledger_path, calls_dir, now
         self.cap_into = dict(cap_into or CAP_INTO_DEFAULT)
         self.require_feed, self.feed_gone_s = require_feed, feed_gone_s
-        self._rows, self._ext, self._calls = [], {}, {}
+        self._rows, self._ext, self._calls = collections.deque(maxlen=ROWS_KEPT), {}, {}
         self._outbox, self._delivered, self._held = [], set(), []      # held voicemail
         self._waiters, self._listeners, self._row_listeners = {}, [], []
         self._replaying = False
@@ -632,8 +643,17 @@ class Switchboard:
         self._release_vm(c["caller"]); self._release_vm(c["callee"])
         return dict(call_id=c["call_id"], state=self._state(e))
 
+    def _check_text(self, text):
+        """Refuse an over-long message instead of truncating it: a half-delivered message is worse
+        than a refused one, and a client that is told the limit can split."""
+        if text is not None and len(text) > TEXT_MAX:
+            raise SwitchError(f"message is {len(text)} chars; the limit is {TEXT_MAX}. "
+                              f"Split it, or leave a shorter note pointing at the detail.")
+        return text
+
     def say(self, team, name, text):
         e, c = self._active(team, name, "IN_CALL")
+        self._check_text(text)
         self._commit("say", ext=e["ext"], call_id=c["call_id"], text=text, msg_id=uuid.uuid4().hex)
         return dict(call_id=c["call_id"], state="IN_CALL", lines=len(c["lines"]))
 
@@ -654,6 +674,7 @@ class Switchboard:
     def leave(self, team, name, peer, text):
         e = self._mine(team, name)
         mid = uuid.uuid4().hex
+        self._check_text(text)
         self._commit("voicemail", ext=e["ext"], peer=peer, text=text, msg_id=mid)
         self._release_vm(peer)
         return dict(queued=True, msg_id=mid, peer_state=self._state(self._ext[peer]) if peer in self._ext else "RETIRED")

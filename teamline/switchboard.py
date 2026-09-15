@@ -318,7 +318,20 @@ class Switchboard:
 
     def _hygiene(self, e, t=None):
         t = self.now() if t is None else t
-        if e["gone_since"] is not None or (e["feed"] and not e["feed_up"]):
+        # A socket that has JUST dropped is not yet GONE. The contract promises a silence window
+        # before a lane is presumed dead, and `register()` hands a GONE lane to whoever asks next --
+        # so without the window a momentary blip was an instant takeover: any client naming the
+        # team/ext (both public in the directory) inherited the lane and its identity was cleared.
+        # Inside the window the lane still belongs to its holder and only a matching identity
+        # re-attaches; past it, the lane is genuinely presumed dead and anyone may reclaim it, which
+        # is how a session recovers its name after a restart gives it a new session id.
+        if e["feed"] and not e["feed_up"]:
+            # SILENCE, not evidence. Wait the window out before presuming death.
+            since = e["gone_since"] if e["gone_since"] is not None else t
+            if t - since >= self.feed_gone_s:
+                return "GONE"
+        elif e["gone_since"] is not None:
+            # EVIDENCE: the host reported this session absent. Nothing to wait for.
             return "GONE"
         if self.require_feed and not e["feed"]:
             return "UNREACHABLE"

@@ -100,3 +100,77 @@ it is queued rather than folded into this fix.
 seconds of silence. A lane that never acks is re-pushed every ack-timeout plus backoff, so it never
 falls silent and the suite hung. Bounded by an absolute deadline instead. Worth knowing if you write
 a client: an acking lane that does not ack is not quiet, it is a loop.
+
+---
+
+## A2 — a dropped socket handed the lane to whoever connected next
+
+**Severity:** high. Impersonation and message interception, reachable by anyone who can read the
+directory and open a socket.
+
+**What was wrong.** Two doors, and closing either one alone left the other open.
+
+The re-attach path allowed `e["feed"] and not e["feed_up"]` on its own: once a holder's socket
+closed, any client naming the same `team/ext` took the lane, carrying no `sid` and no `session_id`.
+Both halves of the name are public in `/directory`, so "knows the name" proved nothing.
+
+And a lane became GONE the *instant* its socket closed, with no grace period, while
+`register()` hands a GONE lane to whoever asks next. So even with the first door shut, a stranger
+simply re-registered over the lane.
+
+The reproduction was worse than the report. After the takeover the directory row still carried the
+**owner's** `sid` while the now-line and the socket were the stranger's:
+
+```
+directory now   : now='not-mine' sid='session-OWNER-0001' holders=1
+```
+
+so the lane still read as the owner's to everyone else, and its traffic arrived on the stranger's
+socket.
+
+**How it was found.** The security reviewer. Reproduced here with a standalone script before
+anything was changed: owner registers with a `sid`, its socket closes, a stranger connects with no
+credentials at all and is handed the lane.
+
+**The test that should have caught it.** None. The suite covered the *duplicate* holder case
+thoroughly — a second socket while the first is alive is refused — but never asked what happens to
+an identity when the first socket is merely gone. The new check asserts both halves: a stranger is
+refused, and the rightful holder still gets back in with its own `sid`. The second half matters as
+much as the first, and is why the offending clause could not simply be deleted.
+
+**The fix, in two parts.**
+
+*Identity on re-attach.* A re-attach is allowed when the caller proves the identity the lane was
+registered with — or when the lane carries no identity at all, in which case there is nothing to
+prove. An anonymous lane cannot be protected; the code says so rather than pretending otherwise.
+
+*A silence window before GONE.* `PROTOCOL.md` already promised that a lane is presumed dead after a
+period of silence. The code presumed it instantly. Restoring the window closes the register door and
+removes a divergence between the documented contract and the behaviour.
+
+Deleting the dead-socket clause outright was the alternative, and it is worse: a lane whose socket
+blipped could not reconnect until it was retired, and a session with no line cannot be rung to be
+told about it.
+
+**What attacking the fix found.** The first attempt, identity-on-re-attach alone, did not work: the
+test stayed red because the takeover simply moved to `register()`. That is the reason the fix has two
+parts rather than one, and it was the test that said so, not review.
+
+Then a sharper problem. The window was first applied to *every* route into GONE, which broke three
+unit checks asserting that a session reported missing by its host is GONE at once. That is correct:
+a host saying "this session is not running" is **evidence**, while a quiet socket is only
+**silence**, and only silence deserves a grace period. The two are distinguishable because a dropped
+feed leaves `feed_up` false whereas a host-reported absence does not. The window now applies to
+silence alone.
+
+Both halves were then perturbed independently, and each turns the seizure check red on its own — the
+identity clause because the stranger re-attaches directly, the window because the stranger
+re-registers. Neither is redundant.
+
+**Verified by.** Both suites green on exit codes; the two new checks; the pre-existing
+reclaim-a-dead-lane check still passing, which is the property the fix had to preserve.
+
+**A consequence, recorded rather than hidden.** Within the silence window a ring to a lane whose
+socket just dropped is now accepted instead of being refused immediately. The ring timer and the
+peer-lost path still resolve it, so the worst outcome is a voicemail arriving later than it used to.
+That is the price of the window, and it matches what the protocol document already promised.

@@ -209,10 +209,19 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
                 # register() refuses an ext whose hygiene is LIVE, so replacing a dead holder would
                 # be rejected with "pick another name" -- the very lockout this escape exists to stop.
             try:
-                if e and (e["feed"] and not e["feed_up"]
-                         or (session_id and e["session_id"] == session_id)
-                         or (sid and e.get("sid") == sid)
-                         or replacing):
+                # WHO MAY TAKE OVER A LANE. Both halves of an extension's name are public in
+                # /directory, so "knows the name" proves nothing. A re-attach is allowed only when
+                # the caller PROVES the identity the lane was registered with -- or when the lane
+                # carries no identity at all, in which case there is nothing to prove and an
+                # anonymous lane simply cannot be protected (say so rather than pretending).
+                #
+                # Dropping the dead-socket clause outright was the alternative and it is worse: a
+                # lane whose socket blipped could not reconnect until it was retired, and a session
+                # with no line cannot be rung to be told about it.
+                bound = (e.get("sid") or e.get("session_id")) if e else None
+                mine = bool(e) and ((session_id and e.get("session_id") == session_id)
+                                    or (sid and e.get("sid") == sid))
+                if e and (mine or (not bound and ((e["feed"] and not e["feed_up"]) or replacing))):
                     e["feed"] = True
                     sb.feed(team, name, True)
                     if now:

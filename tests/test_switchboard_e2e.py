@@ -578,6 +578,34 @@ async def run(tmp):
             except Exception:
                 pass
 
+    # ---- a dropped socket must not hand the lane to whoever connects next -----------------------
+    # The re-attach path allowed `e["feed"] and not e["feed_up"]` on its own: once an incumbent's
+    # socket closed, ANY client naming the same team/ext took the lane, carrying no sid and no
+    # session_id. Both are public in /directory. Worse than a takeover -- the row kept the OWNER's
+    # sid while delivering to the stranger, so it still read as the owner's lane.
+    own = await websockets.connect(
+        "ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=mine&sid=session-OWNER-0001" % PORT)
+    await asyncio.wait_for(anext(aiter(own)), 2)
+    await own.close()
+    await asyncio.sleep(0.3)                       # inside feed_gone_s: the lane is still LIVE
+    seized = None
+    try:
+        thief = await websockets.connect("ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=not-mine" % PORT)
+        seized = json.loads(await asyncio.wait_for(anext(aiter(thief)), 3))
+        await thief.close()
+    except Exception as ex:
+        seized = {"refused": str(ex)[:80]}
+    ck("a client with no matching identity cannot take over a lane whose socket dropped",
+       seized.get("type") != "registered", seized)
+    # ...and the rightful owner must still get back in, which is why the whole clause cannot simply
+    # be deleted: a lane that loses its line cannot be rung to be told about it.
+    back = await websockets.connect(
+        "ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=mine-again&sid=session-OWNER-0001" % PORT)
+    again = json.loads(await asyncio.wait_for(anext(aiter(back)), 3))
+    ck("...but the rightful holder reconnects with its own sid", again.get("type") == "registered", again)
+    await back.close()
+    await asyncio.sleep(0.2)
+
     ids = [e["id"] for e in feeds["writer"] + feeds["review"] if e.get("kind") and not e.get("part")]
     ck("no frame reaches a non-acking feed twice (08:4x: a nudge arrived twice -- push vs retry sweep race)",
        len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1][:3])

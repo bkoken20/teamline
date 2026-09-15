@@ -188,7 +188,7 @@ repository.
 ```bash
 python tests/test_switchboard.py        # the state machine, pure, seconds
 python tests/test_switchboard_e2e.py    # a real broker over real sockets, ~30 s
-python tests/test_perturbations.py      # proves the other two can FAIL (minutes; --unit for seconds)
+python tests/test_perturbations.py      # re-derives every claim in the fix log (minutes; --unit for seconds)
 ```
 
 No setup, no fixtures to install, no network. The end-to-end suite starts a broker in-process, drives

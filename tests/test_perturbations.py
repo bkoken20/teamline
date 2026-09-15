@@ -13,7 +13,9 @@ Every file it touches is restored in a `finally`, and the restore is VERIFIED by
 before exit. If a restore ever fails the run stops immediately and says which file is dirty, because
 leaving a deliberately broken source behind would be far worse than the check it was proving.
 """
+import io
 import os
+import re
 import subprocess
 import sys
 
@@ -105,7 +107,19 @@ def main():
         for i, why in bad:
             print("  %s: %s" % (i, why))
         return 1
-    print("all %d claims hold: every fix is load-bearing and every check can fail." % len(todo))
+    # State the SCOPE with the verdict. This line used to read "every fix is load-bearing and every
+    # check can fail", which claimed the whole suite. It pins the claims made in the fix log; the
+    # other checks are present but unproven -- nobody has shown they can fail, which is exactly the
+    # state a check that cannot fail hides in. Naming the fraction is the honest version, and it is
+    # computed rather than written down so it cannot drift.
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _total = sum(len(re.findall(r"^\s*ck\(", io.open(os.path.join(_here, f), encoding="utf-8").read(), re.M))
+                 for f in sorted(os.listdir(_here))
+                 if f.startswith("test_") and f.endswith(".py") and f != "test_perturbations.py")
+    print("all %d claims in the fix log hold: each names a check that goes RED when its fix is undone."
+          % len(todo))
+    print("Scope: %d of the %d checks in the two suites are pinned this way. The rest are present but "
+          "UNPROVEN -- no one has shown they can fail." % (len(todo), _total))
     return 0
 
 

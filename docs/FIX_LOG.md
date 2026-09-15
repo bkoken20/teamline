@@ -818,6 +818,49 @@ apart silently: re-enable the guard and the check stops demanding the disclosure
 
 ---
 
+## E-L1 — the verification claimed to prove more than it proved
+
+**Severity:** high, and of a particular kind: everything else in this log is a defect in the
+software, while this is a defect in the **evidence** the log itself rests on.
+
+**What was wrong.** The perturbation runner ended a successful run with
+
+> all 24 claims hold: every fix is load-bearing and **every check can fail**.
+
+The second half is false. The runner pins the claims made in this log. Measured at the time: **24 of
+the 178 checks** in the two suites. The other 154 are present and pass, and nobody has ever shown
+that any of them is capable of failing — which is the exact state a check that cannot fail hides in,
+and this repository has already shipped one of those (see B5).
+
+The README repeated the claim in shorter form: *"proves the other two can FAIL"*.
+
+**Why it matters more than its size suggests.** This sentence is the strongest evidence the project
+offers about its own quality, and it is the one a reader will quote. An overclaim there devalues the
+24 claims that *are* real.
+
+**The fix.** The verdict now states its scope, and computes the fraction rather than carrying a
+written-down number that would drift:
+
+> all 24 claims in the fix log hold: each names a check that goes RED when its fix is undone.
+> Scope: 24 of the 178 checks in the two suites are pinned this way. The rest are present but
+> UNPROVEN — no one has shown they can fail.
+
+Pinning all 178 is not the goal and is not practical. Saying which are pinned is.
+
+**Three mistakes made while fixing it**, recorded because a log that keeps only the clean version is
+worth less. The first version of the change used `io` and `re` without importing them, which would
+have raised `NameError` in the runner's *success* path — the worst place for it — and was caught
+before running. A suite run that failed on a port collision was briefly mistaken for the new check
+going red; it was not, and the predicate was evaluated directly instead.
+
+And the third is the one worth generalising. That direct evaluation — computing the check's condition
+in a standalone script — **passed, while the check itself crashed where it sits**: it was placed above
+the lines defining two of the variables it uses, and raised `UnboundLocalError` on its first real run.
+Evaluating a predicate in isolation recomputes its inputs, so it proves the arithmetic and nothing
+about whether the check executes. A check is only verified by running it where it lives.
+
+---
+
 ## The perturbation runner — how these claims are checked
 
 Every entry above ends with a line like "perturbing X turns the check red". That claim is only worth

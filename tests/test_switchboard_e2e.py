@@ -302,6 +302,22 @@ async def run(tmp):
                        for _w in _private if _w in _txt]
     ck("no lane name from the private deployment survives in the publish tree", not _leaks, _leaks[:8])
 
+    # ---- the verification must not claim more than it verifies -----------------------------------
+    # The perturbation runner is this repository's strongest evidence, and its verdict read "every
+    # fix is load-bearing and every check can fail". It pins the claims made in the fix log -- a
+    # fraction of the checks in the two suites. Every other check is merely present: it has never
+    # been shown capable of failing, which is the state a check that cannot fail hides in. Pinning
+    # all of them is not the point and is not practical; saying which is.
+    _tdir = os.path.dirname(os.path.abspath(__file__))
+    _suites = sorted(f for f in os.listdir(_tdir) if f.startswith("test_") and f.endswith(".py"))
+    _pn = len(_re0.findall(r"dict\(id=", io.open(os.path.join(_tdir, "perturbations.py"), encoding="utf-8").read()))
+    _ckn = sum(len(_re0.findall(r"^\s*ck\(", io.open(os.path.join(_tdir, s), encoding="utf-8").read(), _re0.M))
+               for s in _suites if s != "test_perturbations.py")
+    _rsrc = io.open(os.path.join(_tdir, "test_perturbations.py"), encoding="utf-8").read()
+    ck("the perturbation runner does not claim to verify every check when it pins a subset",
+       not (_pn < _ckn and "every check can fail" in _rsrc),
+       "pins %d of %d checks, and its verdict says 'every check can fail'" % (_pn, _ckn))
+
     # ---- a security control that is OFF must be disclosed where people look for it ---------------
     # The broker disables the MCP transport's DNS-rebinding guard, for a real reason: it allows only
     # Host: 127.0.0.1, and every client on a non-loopback deployment is refused. But the README's

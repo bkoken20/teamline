@@ -167,4 +167,14 @@ PERTURBATIONS = [
              "repository shipped in. ALL occurrences, for B5's reason: the disclosure explains the "
              "attack as well as naming it, so blanking the heading alone leaves the word in the "
              "paragraph below and the check stays green"),
+
+    # This one perturbs the RUNNER's own source. That is safe and deliberate: the runner has already
+    # been imported by the time it edits anything, so its behaviour this run is unaffected, and the
+    # check it is proving reads that file as DATA rather than importing it.
+    dict(id="E-L1", suite="e2e", file="tests/test_perturbations.py",
+         find='print("all %d claims in the fix log hold: each names a check that goes RED when its fix is undone."',
+         repl='print("all %d claims hold: every fix is load-bearing and every check can fail."',
+         must_fail="the perturbation runner does not claim to verify every check when it pins a subset",
+         why="puts back the verdict the repository shipped with -- it pinned 24 of 178 checks and "
+             "said every check can fail, which devalues the 24 that are real"),
 ]

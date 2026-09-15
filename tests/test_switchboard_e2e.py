@@ -148,7 +148,7 @@ async def run(tmp):
        pr2.returncode == 0 and all(t in out for t in ("alpha", "beta", "gamma"))
        and all(n in out for n in ("aaa", "bbb", "ccc")), (pr2.stderr[-200:] or out[:200]))
     # holders > 1 is a DEFECT STATE (every message delivered that many times) and was invisible on
-    # this page while beta/lane-alpha held five. The badge must render, and must NOT render at 1.
+    # this page while a lane held five holders. The badge must render, and must NOT render at 1.
     ck("the page flags an extension held by more than one feed, and stays silent at one holder",
        "3 HOLDERS" in out and "1 HOLDERS" not in out, out[:240])
 
@@ -181,7 +181,7 @@ async def run(tmp):
        and "team" in out and "enabled" in out,
        ("LOOPED FOREVER" if looped else (rc, lines[:3])))
 
-    # SECURITY (2026-09-08, reported by alpha/lane-beta and reproduced here): the two clients
+    # SECURITY (2026-09-08, reported from a sibling session and reproduced here): the two clients
     # read the TEAM FROM DIFFERENT PLACES. teamline_cli honours TEAMLINE_PARTY; teamline_feed knew only
     # --party and fell back to "alpha". So a session told (the onboarding doc) to export
     # TEAMLINE_PARTY and then start its feed registered SILENTLY INTO THE DEFAULT TEAM -- a cross-team
@@ -277,6 +277,30 @@ async def run(tmp):
              and not any(_fn0.fnmatch(d, p) for p in _ignored)]
     _undesc = [d for d in _tops if (d + "/") not in _readme0() and ("`" + d + "`") not in _readme0()]
     ck("every top-level directory is described in the README, not just the package", not _undesc, _undesc)
+
+    # ---- a publish candidate carries no identifier from the deployment it was forked from ---------
+    # The rename that de-identified this repository replaced the TEAM names and left the LANE names
+    # behind in comments -- a real lane of the private deployment with only its team relabelled,
+    # pointing at an incident log no reader here can see. The de-identifying commit caught the
+    # grammatical wreckage of that rename; it did not catch these. No example is quoted here on
+    # purpose: this check scans its own file, and a comment illustrating the leak IS the leak.
+    # The needles are assembled from fragments so this check can scan its OWN file without matching
+    # itself -- a denylist written out literally reports the denylist.
+    _private = tuple(a + b for a, b in (
+        ("lan", "e-alpha"), ("lane-", "beta"), ("lane-g", "amma"), ("lane-del", "ta"),
+        ("lane", "-epsilon"), ("la", "ne-zeta"), ("la", "ne-eta"), ("lan", "e-theta")))
+    _leaks = []
+    for _dp, _dn, _fs in os.walk(_root):
+        _dn[:] = [d for d in _dn if not d.startswith(".") and d != "__pycache__"
+                  and not any(_fn0.fnmatch(d, p) for p in _ignored)]
+        for _f in _fs:
+            # Everything, not an extension allowlist. The walk of the first version showed it was
+            # skipping Dockerfile, LICENSE and page_probe.js -- all published, all able to carry a
+            # name. Binary files simply will not match; errors="replace" keeps them from raising.
+            _txt = io.open(os.path.join(_dp, _f), encoding="utf-8", errors="replace").read()
+            _leaks += ["%s:%s" % (os.path.relpath(os.path.join(_dp, _f), _root), _w)
+                       for _w in _private if _w in _txt]
+    ck("no lane name from the private deployment survives in the publish tree", not _leaks, _leaks[:8])
 
     # ---- a client that cannot reach the broker must say WHAT it tried ----------------------------
     # TEAMLINE_PORT moves the broker; it does not move the clients, which default to TEAMLINE_URL.
@@ -590,7 +614,7 @@ async def run(tmp):
 
     # ---- ONE HOLDER PER EXTENSION (operator, 2026-09-08: "adopt refuse-second-holder").
     # push() fans every event out to all holders, so N holders = N copies while the ledger records
-    # ONE delivery -- measured live: lane-alpha held FIVE, and no msg_id in 2,743 rows had a second
+    # ONE delivery -- measured live: a single lane held FIVE, and no msg_id in 2,743 rows had a second
     # `delivered` row. The rule is: a LIVE incumbent is NEVER evicted; a newcomer is refused whatever
     # identity it presents. Eviction happens only when the incumbent is already dead.
     #

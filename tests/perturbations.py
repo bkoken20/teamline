@@ -137,4 +137,13 @@ PERTURBATIONS = [
              "security section recommended the compose file and nothing said where it lived. ALL "
              "occurrences, for B5's reason: the run command on the same table row carries the string "
              "a second time, so replacing the cell alone would leave the check green"),
+
+    dict(id="D-L1", suite="e2e", file="teamline/switchboard_broker.py",
+         find="Measured in production: one lane held 5 holders,",
+         # assembled from fragments for the same reason the check itself is: the scan reads this
+         # file's TEXT, so a literal needle written here would make the check red for ever.
+         repl="Measured 2026-09-08: beta/one-" + "analysis held 5,",
+         must_fail="no lane name from the private deployment survives in the publish tree",
+         why="puts back a lane name of the private deployment, which is the state the de-identifying "
+             "rename left four comments in -- the team relabelled, the lane name untouched"),
 ]

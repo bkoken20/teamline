@@ -91,7 +91,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
 
         push() below fans every event out to all of them, so holders > 1 means the reader receives
         each message that many times -- while the ledger still records ONE delivery, because delivery
-        is ledgered per message and not per socket. Measured 2026-09-08: beta/lane-alpha held 5,
+        is ledgered per message and not per socket. Measured in production: one lane held 5 holders,
         and no msg_id in 2,743 ledger rows had a second `delivered` row. The state was therefore
         invisible in every record we keep, and ran through three incidents unnoticed.
 

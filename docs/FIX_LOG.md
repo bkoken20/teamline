@@ -698,6 +698,43 @@ findable, not that it was proven to work here.
 
 ---
 
+## D-L1 — the rename took the team names out and left the lane names in
+
+**Severity:** high for a repository about to be published, and irreversible once it is.
+
+**What was wrong.** De-identifying this repository replaced the private deployment's team names with
+`alpha`/`beta`/`gamma`. Four comments kept the *lane* names underneath — a real session's lane with
+only its team relabelled, next to a bare clock time pointing at an incident log no reader here can
+see. One of them sat in shipped source, not just tests.
+
+**How it was found.** Not from the review queue: that queue did not survive the move between
+machines, so the group-D items are known by count and not by content. This was found by scanning the
+tree and, more usefully, the **history** — a push publishes all commits, not the working tree. The
+history is clean: the real team names never entered it, and the commit that "removed an identity"
+turns out to have been cleaning the grammatical wreckage the rename left, not a name.
+
+**The fix.** The four comments keep their engineering fact and lose the pointer: *one lane held five
+holders* rather than a named lane. Numbered `D-L1`, not a queue id, for the reason given in B-L1.
+
+**The check.** No identifier from the private deployment may appear anywhere in the tree. Its needles
+are assembled from string fragments so that the check can scan **its own file** — a denylist written
+out literally reports itself, and then the only way to keep the suite green is to stop scanning the
+files most likely to carry a leak.
+
+It caught the author immediately: the explanatory comment above it quoted one of the leaked names as
+an example, and the check flagged it. The comment now says why no example is quoted.
+
+**What the walk turned up, and the check had to be widened.** Walking it printed the files actually
+read, and the list was short: an extension allowlist (`.py`, `.md`, `.html`, `.yml`, `.txt`) was
+silently skipping `deploy/Dockerfile`, `LICENSE` and `tests/page_probe.js` — all published, all able
+to carry a name, and `page_probe.js` is source. They were clean, which is luck rather than design.
+The scan now reads every file outside the excluded directories.
+
+**A limit.** The needle list is a denylist of names known to have leaked. It cannot catch a private
+identifier nobody has thought of. It is a regression guard, not a proof of de-identification.
+
+---
+
 ## The perturbation runner — how these claims are checked
 
 Every entry above ends with a line like "perturbing X turns the check red". That claim is only worth

@@ -302,6 +302,20 @@ async def run(tmp):
                        for _w in _private if _w in _txt]
     ck("no lane name from the private deployment survives in the publish tree", not _leaks, _leaks[:8])
 
+    # ---- a security control that is OFF must be disclosed where people look for it ---------------
+    # The broker disables the MCP transport's DNS-rebinding guard, for a real reason: it allows only
+    # Host: 127.0.0.1, and every client on a non-loopback deployment is refused. But the README's
+    # security section -- the one headed "read this before deploying" -- documented the missing
+    # authentication and the open operator surface and never mentioned this, and rebinding is exactly
+    # the attack against the loopback-plus-VPN shape that same section RECOMMENDS. The code fact
+    # therefore carries a documentation obligation, and this check is the link between them.
+    _bsrc = io.open(os.path.join(PKG, "teamline_broker.py"), encoding="utf-8").read()
+    _guard_off = "enable_dns_rebinding_protection=False" in _bsrc
+    _sec = _readme0().split("## Security model")[-1].split("\n## ")[0] if "## Security model" in _readme0() else ""
+    ck("if the DNS-rebinding guard is disabled, the security section says so",
+       (not _guard_off) or ("rebinding" in _sec.lower()),
+       "guard_off=%s, security section mentions rebinding=%s" % (_guard_off, "rebinding" in _sec.lower()))
+
     # ---- the README counts ITSELF, and nothing checked the counts --------------------------------
     # Three separate numbers in this file described the repository and drifted out of date: the file
     # count, the suite count, and the line counts. A number nobody checks is a statement that becomes

@@ -116,9 +116,11 @@ def build(root=ROOT, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=90, state_
         except SWB.SB.SwitchError as e:
             return JSONResponse(dict(ok=False, error=str(e)))
 
-    # The transport's DNS-rebinding guard allows only Host: 127.0.0.1 by default -- on the the broker's host every
-    # client arrives with Host: 10.0.0.2:3790 and got "Invalid Host header" (09:05). The broker
-    # lives on the private the private network with no other auth, so the guard buys nothing here: off.
+    # The transport's DNS-rebinding guard accepts only Host: 127.0.0.1, so on any deployment that is
+    # not pure loopback every client is refused with "Invalid Host header" -- including the shipped
+    # compose file, which binds 0.0.0.0 inside its container. It is DISABLED here, and that is a
+    # security trade rather than a detail: see the README's security section, which says what it
+    # costs and when you should turn it back on.
     from mcp.server.transport_security import TransportSecuritySettings
     mcp_app = mcp.streamable_http_app(streamable_http_path="/mcp", json_response=True, stateless_http=True,
                                       transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False))

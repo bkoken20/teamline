@@ -159,4 +159,12 @@ PERTURBATIONS = [
          must_fail="the README's 'roughly N lines' claims are within 20% of the real counts",
          why="puts back the shipped figures: the tests claim was out by 70%, understating the suite "
              "it was describing"),
+
+    dict(id="C-L2", suite="e2e", file="README.md",
+         find="rebinding", repl="host-header", all_occurrences=True,
+         must_fail="if the DNS-rebinding guard is disabled, the security section says so",
+         why="removes the disclosure that a security control is off, which is the state the "
+             "repository shipped in. ALL occurrences, for B5's reason: the disclosure explains the "
+             "attack as well as naming it, so blanking the heading alone leaves the word in the "
+             "paragraph below and the check stays green"),
 ]

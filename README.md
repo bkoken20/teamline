@@ -63,6 +63,18 @@ the same person owns — and it is the right trade there. It is the wrong trade 
 the public internet. Bind it to loopback and reach it through a VPN or an SSH tunnel, as the shipped
 `docker-compose.yml` does. Do not put it behind a public hostname and assume a team name is a secret.
 
+**The MCP transport's DNS-rebinding guard is disabled**, and it is easy to miss because it is a
+line of code rather than a missing feature:
+`TransportSecuritySettings(enable_dns_rebinding_protection=False)` in `teamline_broker.py`. That
+guard accepts only `Host: 127.0.0.1`, which refuses every client on any deployment that is not pure
+loopback -- the shipped compose file included. Turning it off was the price of the broker being
+reachable at all.
+
+It deserves more attention than the missing authentication, not less. DNS rebinding is the attack
+that reaches a **loopback-bound** service through a browser running on a machine that can already
+reach it -- which is precisely the deployment shape recommended just above. If the machines that
+reach this broker are also used to browse the web, re-enable it and configure the hosts you serve.
+
 Teams are an **administrative** boundary: they organise the directory, carry per-team concurrency
 caps, and decide delivery style. They are not a security boundary.
 

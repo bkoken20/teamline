@@ -777,6 +777,47 @@ it **fails**. A silent miss would have made it a check that cannot fail.
 
 ---
 
+## C-L2 — a security control is switched off, and the security section did not say so
+
+**Severity:** the highest in this log. Everything else here is a defect in the software; this one is a
+defect in what the software *tells you about itself*, in the section headed "read this before
+deploying".
+
+**What was wrong.** `teamline_broker.py` disables the MCP transport's DNS-rebinding guard —
+`TransportSecuritySettings(enable_dns_rebinding_protection=False)`. The reason is real: the guard
+accepts only `Host: 127.0.0.1`, so every client on any deployment that is not pure loopback is
+refused, the shipped compose file included. Turning it off was the price of the broker being
+reachable at all.
+
+The security section documented the missing authentication and the wide-open operator surface, and
+never mentioned this. The only trace was a line in the Status list — *"the MCP transport's
+DNS-rebinding guard refused every non-loopback client"* — which reads as a bug that was **fixed**,
+not as a control that was switched off and left off.
+
+**Why this is worse than the missing authentication, which is documented at length.** The missing
+auth is a property of the network you deploy on, and the README tells you to put the service behind a
+VPN. DNS rebinding is the attack that reaches a **loopback-bound** service through a browser running
+on a machine that can already reach it — so it defeats exactly the mitigation the section recommends.
+The undocumented hole was in the same paragraph as the advice that it undermines.
+
+**The comment justifying it was true only of the deployment it came from.** It read that the broker
+*"lives on the private the private network with no other auth, so the guard buys nothing here"*, and carried a
+private address and an internal incident time. A reader deploying this elsewhere would have found a
+disabled security control and a note telling them it did not matter — which, for them, is false.
+
+**The fix, and why it is documentation rather than code.** The standing decision for this repository
+is trusted-network-only, documented prominently rather than fixed, because adding authentication
+would mean shipping untested security code. The same reasoning applies here: re-enabling the guard
+would break the deployment the README recommends, and configuring allowed hosts properly is a feature
+nobody has tested. So the trade is now stated where people look for it, the code comment says it is a
+security trade rather than a detail and points at that section, and the private justification is gone.
+
+**The check.** If the guard is disabled in the source, the README's security section must mention
+rebinding. It is a link between a code fact and a documentation obligation, so the two cannot drift
+apart silently: re-enable the guard and the check stops demanding the disclosure on its own.
+
+---
+
 ## The perturbation runner — how these claims are checked
 
 Every entry above ends with a line like "perturbing X turns the check red". That claim is only worth

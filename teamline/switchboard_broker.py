@@ -45,7 +45,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
     feeds = {}                                            # ext -> set(ws)
     awaiting = {}                                         # msg_id -> (sent_at, ext)  (acking feeds only)
     retry_at = {}                                         # msg_id -> earliest re-send
-    accept_sem = asyncio.Semaphore(accept_parallel)       # reconnect stagger after a broker/the broker's host restart
+    accept_sem = asyncio.Semaphore(accept_parallel)       # reconnect stagger after a broker or host restart
     state_path = os.path.join(root, "broker_state.json")
     state = dict(stamp_ok=True, last_error=None)
 

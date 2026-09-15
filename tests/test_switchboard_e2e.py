@@ -1,4 +1,4 @@
-"""SWITCHBOARD end-to-end, the broker's host mode (inverted delivery): the real broker in-process,
+"""SWITCHBOARD end-to-end, remote-broker mode (inverted delivery): the real broker in-process,
 MCP clients as extensions (team by header, ext by argument), a WebSocket feed per extension, a FAKE
 ACKING WATCHER standing in for a second team's delivery agent (holds feeds with session_id, ACKS deliveries, sends
 keepalives carrying `running`), the observer feed for the operator page. The broker reaches no session's host: delivery into beta is inverted -- the watcher delivers and acks.
@@ -204,13 +204,13 @@ async def run(tmp):
        ("registered as alpha/probe-env" if "alpha/probe-env" in dnames else
         ("HELD THE SOCKET (registered under the fallback team)" if eheld else (erc, eout[:160]))))
 
-    # ---- the broker's host: a client arriving with a non-loopback Host header must be served (09:05: "Invalid Host header")
+    # ---- a client arriving with a non-loopback Host header must be served ("Invalid Host header")
     hc2 = httpx2.AsyncClient(headers={"X-Teamline-Party": "alpha", "Host": "10.0.0.2:3790"}, timeout=httpx2.Timeout(30.0))
     async with hc2:
         async with Client(streamable_http_client(url, http_client=hc2)) as s2:
             res = await s2.call_tool("sw_directory", {})
             txt = "".join(c.text for c in res.content if getattr(c, "text", None))
-    ck("the MCP endpoint serves a client whose Host header is the the broker's host address (DNS-rebinding guard off)",
+    ck("the MCP endpoint serves a client whose Host header is not loopback (DNS-rebinding guard off)",
        "extensions" in txt, txt[:120])
 
     # ---- standalone: the broker pulls in nothing from its author's tree ------------------------------
@@ -289,6 +289,10 @@ async def run(tmp):
     _private = tuple(a + b for a, b in (
         ("lan", "e-alpha"), ("lane-", "beta"), ("lane-g", "amma"), ("lane-del", "ta"),
         ("lane", "-epsilon"), ("la", "ne-zeta"), ("la", "ne-eta"), ("lan", "e-theta")))
+    # Phrases, not identifiers. Assembled from fragments for the same reason as above -- and note
+    # that this forces the fix log to PARAPHRASE these rather than quote them, which is the third
+    # time that rule has applied here (the de-identification comment, the history-status sentence).
+    _deploy = tuple(a + b for a, b in (("the broker's", " host"), ("the private", " network")))
     _leaks = []
     for _dp, _dn, _fs in os.walk(_root):
         _dn[:] = [d for d in _dn if not d.startswith(".") and d != "__pycache__"
@@ -300,7 +304,13 @@ async def run(tmp):
             _txt = io.open(os.path.join(_dp, _f), encoding="utf-8", errors="replace").read()
             _leaks += ["%s:%s" % (os.path.relpath(os.path.join(_dp, _f), _root), _w)
                        for _w in _private if _w in _txt]
-    ck("no lane name from the private deployment survives in the publish tree", not _leaks, _leaks[:8])
+            # A second class the lane-name list could not catch: PHRASES naming the private
+            # deployment's infrastructure. "the <adjective> host" reads, to a stranger, as a
+            # reference to a machine they are assumed to know and which is defined nowhere here.
+            _leaks += ["%s:%s" % (os.path.relpath(os.path.join(_dp, _f), _root), _w)
+                       for _w in _deploy if _w in _txt]
+    ck("no lane name or deployment phrase from the private deployment survives in the publish tree",
+       not _leaks, _leaks[:8])
 
     # ---- the log must not claim about the HISTORY what the history does not support --------------
     # D-L1 asserted "The history is clean: the real team names never entered it." That was FALSE. The
@@ -889,7 +899,7 @@ async def run(tmp):
 def main():
     import logging
     logging.getLogger("httpx2").setLevel(logging.WARNING)
-    print("TEST -- switchboard end-to-end, the broker's host mode (fake beta watcher delivers + acks)\n")
+    print("TEST -- switchboard end-to-end, remote-broker mode (fake beta watcher delivers + acks)\n")
     tmp = tempfile.mkdtemp(prefix="sb_e2e_")
     asyncio.run(run(tmp))
     print()

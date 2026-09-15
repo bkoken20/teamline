@@ -9,7 +9,7 @@ from mcp.client import Client
 from mcp.client.streamable_http import streamable_http_client
 logging.getLogger("httpx2").setLevel(logging.WARNING)
 PARTY = os.environ.get("TEAMLINE_PARTY", "alpha").strip().lower()
-URL = os.environ.get("TEAMLINE_URL", "http://127.0.0.1:3790").rstrip("/") + "/mcp"   # the the broker's host broker since 2026-09-03 09:0x
+URL = os.environ.get("TEAMLINE_URL", "http://127.0.0.1:3790").rstrip("/") + "/mcp"   # the broker, wherever it runs
 async def call(tool, **args):
     hc = httpx2.AsyncClient(headers={"X-Teamline-Party": PARTY}, timeout=httpx2.Timeout(30, read=130))
     async with hc:

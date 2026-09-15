@@ -143,7 +143,7 @@ PERTURBATIONS = [
          # assembled from fragments for the same reason the check itself is: the scan reads this
          # file's TEXT, so a literal needle written here would make the check red for ever.
          repl="Measured 2026-09-08: beta/one-" + "analysis held 5,",
-         must_fail="no lane name from the private deployment survives in the publish tree",
+         must_fail="no lane name or deployment phrase from the private deployment survives in the publish tree",
          why="puts back a lane name of the private deployment, which is the state the de-identifying "
              "rename left four comments in -- the team relabelled, the lane name untouched"),
 
@@ -196,4 +196,15 @@ PERTURBATIONS = [
              "is how it would really arrive. Demonstrated before the fix: re.search took the first "
              "match and the check PASSED with two markers disagreeing. Silently choosing between "
              "contradictory claims is worse than either claim"),
+
+    dict(id="V-2", suite="e2e", file="teamline/switchboard_broker.py",
+         find="# reconnect stagger after a broker or host restart",
+         # assembled from fragments: spelled out, this file would carry the phrase it tests for, and
+         # the check scans every file including this one.
+         repl="# reconnect stagger after a broker/always-on " + "host restart",
+         must_fail="no lane name or deployment phrase from the private deployment survives in the publish tree",
+         why="puts back a phrase naming the private deployment's own machine. It survived the "
+             "lane-name pass because it is a PHRASE, not an identifier -- and it read, to a stranger, "
+             "as a reference to infrastructure they were assumed to know and which is defined nowhere "
+             "in this repository"),
 ]

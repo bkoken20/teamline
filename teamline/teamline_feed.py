@@ -2,7 +2,7 @@
 
     python teamline/teamline_feed.py --ext <name> --now "<what you are doing>" --sid <session id>
 
-Holds the extension's feed on the broker (default TEAMLINE_URL, the the broker's host), prints every frame as one
+Holds the extension's feed on the broker (default TEAMLINE_URL), prints every frame as one
 JSON line (each line becomes a notification in the session), reconnects forever (2 s cadence), and
 sends a keepalive every 25 s. Exists because the app's Monitor(ws=...) refuses non-loopback private
 addresses (09:02 2026-09-03: "address is in a private, link-local, or cloud-metadata range"), so

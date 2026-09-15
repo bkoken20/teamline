@@ -841,7 +841,8 @@ on a machine that can already reach it — so it defeats exactly the mitigation 
 The undocumented hole was in the same paragraph as the advice that it undermines.
 
 **The comment justifying it was true only of the deployment it came from.** It read that the broker
-*"lives on the private the private network with no other auth, so the guard buys nothing here"*, and carried a
+that the broker sat on a private network with no other authentication, so the guard bought
+nothing there. It also carried a
 private address and an internal incident time. A reader deploying this elsewhere would have found a
 disabled security control and a note telling them it did not matter — which, for them, is false.
 

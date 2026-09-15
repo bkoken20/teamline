@@ -29,10 +29,10 @@ from starlette.applications import Starlette                  # noqa: E402
 from starlette.responses import HTMLResponse, JSONResponse    # noqa: E402
 from starlette.routing import Mount, Route, WebSocketRoute    # noqa: E402
 
-ROOT = os.environ.get("TEAMLINE_ROOT", "./data")   # the the broker's host container sets its own
+ROOT = os.environ.get("TEAMLINE_ROOT", "./data")   # a container deployment sets its own
 PORT = int(os.environ.get("TEAMLINE_PORT", "3790"))
-BIND = os.environ.get("TEAMLINE_BIND", "127.0.0.1")        # 0.0.0.0 on the the broker's host (host networking)
-PAGE_FILE = os.environ.get("TEAMLINE_PAGE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "teamline_page.html"))   # on the the broker's host: a read-only mount of the tree file, so page tweaks need no rebuild
+BIND = os.environ.get("TEAMLINE_BIND", "127.0.0.1")        # 0.0.0.0 inside a container
+PAGE_FILE = os.environ.get("TEAMLINE_PAGE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "teamline_page.html"))   # in a container: mount this file read-only and page tweaks need no rebuild
 TEAMS = SWB.SB.TEAMS        # never a second copy: adding a team must be ONE edit (switchboard.TEAMS)
 OPERATOR = "operator"
 

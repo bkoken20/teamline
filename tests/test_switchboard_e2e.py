@@ -24,6 +24,11 @@ FAILS = []
 PORT = 3792
 
 
+def SBteams():
+    import switchboard as SB
+    return SB.TEAMS
+
+
 def ck(name, cond, detail=""):
     print("  %s  %s%s" % ("PASS" if cond else "FAIL", name, "" if cond else "\n        [%s]" % (detail,)))
     if not cond:
@@ -381,6 +386,17 @@ async def run(tmp):
     await asyncio.sleep(0.4)
     ck("the operator observer snapshot carries the directory and active calls",
        obs and obs[0].get("type") == "snapshot" and "directory" in obs[0] and "calls" in obs[0], obs[:1])
+    # These two pin what the README's security section must SAY, because they are the sharpest edge
+    # of the no-authentication stance: the observer needs no team name -- `operator` is not in TEAMS,
+    # so TEAMLINE_TEAMS does not gate it -- and its snapshot carries raw ledger rows, which include
+    # message text, call subjects and openings. If either ever stops being true, the security section
+    # is wrong and must be rewritten with it.
+    ck("the observer needs NO team name: `operator` is not a configured team",
+       "operator" not in SBteams(), SBteams())
+    ck("...and its snapshot carries raw ledger rows, message text included",
+       isinstance(obs[0].get("rows"), list)
+       and any(isinstance(r, dict) and r.get("text") for r in obs[0]["rows"]),
+       [r.get("event") for r in (obs[0].get("rows") or [])][-6:])
     # ---- A SILENT ACKING HOLDER IS RE-PUSHED FOREVER (the gamma trap, 2026-09-14). Passing
     # session_id makes a feed an ACKING one (`acking()` = bool(session_of(ext))), and the broker then
     # keeps the message in the outbox until an ack arrives. teamline_feed.py sends only {"ping":1} and

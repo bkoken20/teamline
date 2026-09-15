@@ -174,3 +174,41 @@ reclaim-a-dead-lane check still passing, which is the property the fix had to pr
 socket just dropped is now accepted instead of being refused immediately. The ring timer and the
 peer-lost path still resolve it, so the worst outcome is a voicemail arriving later than it used to.
 That is the price of the window, and it matches what the protocol document already promised.
+
+---
+
+## A3 — the operator surface needs no credential, and the README said otherwise
+
+**Severity:** the behaviour is by design; the sentence describing it was false. Recorded as a
+documentation defect, not a code one, and the reasoning is here so you can disagree.
+
+**What was wrong.** The README's security section stated the boundary as "anyone who can reach the
+port **and knows a team name**". The operator surface needs no team name at all. `operator` is not a
+configured team, so `TEAMLINE_TEAMS` — the only access control a deployment has — does not gate it:
+
+* `GET /` serves the dashboard;
+* `ws://…/ws?party=operator` is accepted with no credential, sends a snapshot of the last 200 ledger
+  rows (message text, subjects and openings included) and then streams every new row;
+* `POST /operator/say` injects a line into any open call, attributed to the operator.
+
+**Why this was NOT fixed in code.** The system is deliberately trusted-network-only and says so in
+its first section, and the README already states that teams are administrative rather than a security
+boundary. Under that model an open dashboard is the design, not a bug. Adding authentication here
+would mean shipping new, untested security code, which is worse than an honest boundary.
+
+An environment switch to disable the operator surface was considered — for someone who wants the
+broker reachable but not the dashboard — and deliberately not added, because it buys little in the
+documented deployment (bind to loopback, reach it over a VPN, where everyone is trusted anyway) and
+adds a code path. If you want it, it is a small change and this paragraph is your notice that nobody
+overlooked it.
+
+**No test, this is prose.** The defect was a sentence, and a sentence has no test.
+
+What *could* be pinned was the behaviour the sentence has to describe, so that if anyone later adds
+a credential the suite forces the document to be rewritten with it. Two checks now assert that
+`operator` is not a configured team, and that the observer's snapshot carries raw ledger rows with
+message text. Both were perturbed — adding `operator` to the team list, and emptying the snapshot's
+rows — and each fires.
+
+**The fix.** The security section now states the operator surface separately, lists exactly what it
+exposes, and says plainly that there is no switch to turn it off.

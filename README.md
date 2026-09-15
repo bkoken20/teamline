@@ -46,6 +46,18 @@ broker checks that the team is one it was configured to serve; it does not check
 entitled to that team. Anyone who can reach the port and knows a team name can register an
 extension, read the directory, call any session and read call transcripts.
 
+**The operator surface needs no team name at all**, which is the sharpest edge of this and worth
+stating separately. `operator` is not a configured team, so `TEAMLINE_TEAMS` does not gate it:
+
+* `GET /` serves the dashboard;
+* `ws://…/ws?party=operator` is accepted with no credential and streams a snapshot of the last 200
+  ledger rows — message text, call subjects and openings included — and then every new row live;
+* `POST /operator/say` injects a line into any open call, attributed to the operator.
+
+So reaching the port is enough to read everything that passes through the broker and to speak into
+any conversation. There is no switch to turn this off; if you need the broker reachable but not the
+dashboard, that is a change you would have to make.
+
 That is a deliberate choice for the environment it was built in — a private VPN between two machines
 the same person owns — and it is the right trade there. It is the wrong trade on a shared network or
 the public internet. Bind it to loopback and reach it through a VPN or an SSH tunnel, as the shipped

@@ -423,3 +423,38 @@ Both bounds perturbed independently, each turns its own check red.
 of truth and is replayed in full at startup, so a broker that runs for years will start slowly and
 hold a large working set. Compaction — folding old rows into a checkpoint — is not implemented. If
 you run this at volume, that is the next thing to build, and nobody has overlooked it.
+
+---
+
+## A9 — dead code reaching for a key that no longer exists
+
+**Severity:** low on its own. Recorded because of *why* it survived, which is the interesting part.
+
+**What was wrong.** `teamline_broker.py` carried `_flush_soon()` and `_safe_flush()`, and
+`_safe_flush` read `sw["deliverer"]`. Nothing called either function, and the wiring returns no
+`deliverer` key — it provides `sb, feed, ticker, snapshot_extra, hook_now, directory_json, healthz,
+write_state`. Left over from the design before delivery was inverted, when the broker pushed into
+hosts itself.
+
+Two things hid it. The reference sat inside a `try/except Exception` that would have turned the
+`KeyError` into a line on stderr rather than a failure. And the path was unreachable, so no test
+could ever have executed it.
+
+**The fix.** Deleted. There is nothing to preserve in code that cannot run.
+
+**The check that now exists.** Deleting dead code teaches nobody anything, so the useful part is the
+guard: every `sw[...]` the broker reads must be a key the wiring actually returns. It compares the
+two files at the source level *deliberately* — a runtime check cannot reach an unreachable line,
+which is exactly the class of defect this was.
+
+**What attacking the fix found.** The first perturbation was wrong and said so loudly. Pointing a
+*live* line at a missing key crashed the application at startup, so the suite never reached the
+check — proving only that the key is used there. The perturbation had to take the shape of the real
+defect, an **unreachable** reference, and with that the check fires.
+
+Also checked for collateral: `sys` is still used by the module's path setup, so removing its only
+stderr write left no dangling import.
+
+**A limit of the check, stated.** It matches `sw["literal"]` only. A dynamic lookup — `sw[name]` —
+would slip past it. Nothing in the module does that today, and if you add one, this guard will not
+protect you.

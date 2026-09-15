@@ -243,6 +243,21 @@ async def run(tmp):
     ck("the package imports nothing it does not declare (no hidden dependencies)",
        not undeclared, {k: sorted(v) for k, v in undeclared.items()})
 
+    # THE WIRING AND ITS CONSUMER MUST AGREE. teamline_broker reaches into the dict that
+    # switchboard_broker.wire() returns. A key that no longer exists there is invisible until the
+    # line runs -- and one such line sat in a `try/except Exception` that would have swallowed the
+    # KeyError into a log message nobody reads. A source check catches it without having to reach
+    # the code path, which is the point: the path in question was unreachable.
+    import re as _re
+    _consumer = io.open(os.path.join(PKG, "teamline_broker.py"), encoding="utf-8").read()
+    _wiring = io.open(os.path.join(PKG, "switchboard_broker.py"), encoding="utf-8").read()
+    _ret = _wiring[_wiring.rindex("return dict("):]
+    _provided = set(_re.findall(r"(\w+)=", _ret[:_ret.index(")")]))
+    _used = set(_re.findall(r'sw\["(\w+)"\]', _consumer))
+    ck("every sw[...] the broker reads is a key the wiring actually returns",
+       _used <= _provided, {"used but not provided": sorted(_used - _provided),
+                            "provided": sorted(_provided)})
+
     # ---- directory + liveness from keepalives ---------------------------------------------------
     d = {e["ext"]: e for e in (await call("alpha", "sw_directory"))["extensions"]}
     ck("the directory lists all four extensions with now + age",

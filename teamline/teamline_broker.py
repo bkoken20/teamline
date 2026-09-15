@@ -107,16 +107,6 @@ def build(root=ROOT, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=90, state_
         except SWB.SB.SwitchError as e:
             return JSONResponse(dict(ok=False, error=str(e)))
 
-    async def _flush_soon():
-        await asyncio.sleep(0.05)
-        await asyncio.to_thread(_safe_flush)
-
-    def _safe_flush():
-        try:
-            sw["deliverer"].flush()
-        except Exception as e:
-            sys.stderr.write(f"[teamline] flush: {e}\n")
-
     # The transport's DNS-rebinding guard allows only Host: 127.0.0.1 by default -- on the the broker's host every
     # client arrives with Host: 10.0.0.2:3790 and got "Invalid Host header" (09:05). The broker
     # lives on the private the private network with no other auth, so the guard buys nothing here: off.

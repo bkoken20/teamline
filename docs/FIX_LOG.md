@@ -629,5 +629,11 @@ read first and `teamline_broker.py` as the one to run.
 **The check.** Every `.py` in the package must be mentioned in the README. It reported exactly the
 one that was missing, and it fails for any module added later without a line in the table.
 
-Perturbing the table entry to a description that does not name the file turns it red — which is the
-point: the check wants the *filename* present, not a paraphrase a reader cannot grep for.
+**A correction to this entry.** It first claimed the perturbation turned the check red. It did not.
+Replacing only the table row left the filename in the sentence above the table, so the check still
+found it and passed — and the claim was written without reading the output properly. Perturbed again
+with *every* occurrence removed, the check does fire and names the missing module.
+
+Two things worth taking from that. A perturbation that fails to fire is evidence about the
+*perturbation* until you have checked which, and an unread green is how a test that cannot fail gets
+believed in the first place.

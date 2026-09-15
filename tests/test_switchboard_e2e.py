@@ -259,6 +259,44 @@ async def run(tmp):
        any(e["event"] == "delivered" and e["session_id"] == "sess-A" for e in ledger()), [e for e in ledger() if e["event"] == "delivered"][-2:])
     ck("the caller got the machine ring_delivered signal after the ack",
        any(e.get("kind") == "ring_delivered" for e in feeds["writer"]), feeds["writer"][-2:])
+    # ---- an ack must come from the lane the message was addressed to ---------------------------
+    # on_frame() knows which socket a frame arrived on, and awaiting[msg_id] records the TARGET
+    # extension at push time -- but the ack path compared neither. A `delivered` row removes the
+    # message from the outbox permanently, so a foreign ack does not merely mislabel the delivery,
+    # it DESTROYS another lane's message and ledgers it against the wrong session.
+    victim_frames = []
+
+    async def victim_holder(seconds):
+        # Bounded by an ABSOLUTE deadline, not by inter-frame silence: this lane never acks, so the
+        # retry sweep re-pushes to it every ack_timeout + backoff and it never falls quiet. Waiting
+        # for silence here hung the suite.
+        loop = asyncio.get_event_loop()
+        end = loop.time() + seconds
+        async with websockets.connect(
+                "ws://127.0.0.1:%d/ws?party=gamma&ext=victim&now=waiting&session_id=sess-VICTIM" % PORT) as ws:
+            try:
+                while loop.time() < end:
+                    ev = json.loads(await asyncio.wait_for(anext(aiter(ws)), max(0.05, end - loop.time())))
+                    if ev.get("kind"):
+                        victim_frames.append(ev)          # received, and deliberately never acked
+            except (asyncio.TimeoutError, StopAsyncIteration):
+                return
+    vh = asyncio.create_task(victim_holder(2.5))
+    await asyncio.sleep(0.4)
+    vm = await call("alpha", "sw_leave", ext="writer", peer="gamma/victim", text="for the victim only")
+    mid = vm["msg_id"]
+    await asyncio.sleep(0.5)
+    async with websockets.connect("ws://127.0.0.1:%d/ws?party=alpha&ext=attacker&now=x" % PORT) as aws:
+        await asyncio.wait_for(anext(aiter(aws)), 2)       # the attacker's own `registered` frame
+        await aws.send(json.dumps({"ack": mid, "session_id": "sess-ATTACKER", "accepted": True}))
+        await asyncio.sleep(0.6)
+    await vh
+    stolen = [e for e in ledger() if e["event"] == "delivered" and e.get("msg_id") == mid]
+    ck("an ack naming a message addressed to ANOTHER lane is ignored", not stolen, stolen)
+    dv = {e["ext"]: e for e in (await call("gamma", "sw_directory"))["extensions"]}
+    ck("...and that message is still queued for the lane it belongs to",
+       (dv.get("gamma/victim") or {}).get("pending", 0) >= 1, dv.get("gamma/victim"))
+
     await call("beta", "sw_answer", ext="deep")
     await call("beta", "sw_answer", ext="ruler")
     await call("beta", "sw_say", ext="deep", text="depth line")

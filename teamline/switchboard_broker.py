@@ -144,6 +144,18 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
             return
         if "ack" in m:
             mid = str(m["ack"])
+            # An ack may only settle a message addressed to the lane whose socket it arrived on.
+            # Validated against the OUTBOX rather than `awaiting`, because `awaiting` is popped when
+            # the ack window expires, and a late-but-genuine ack must still be checkable. Anything
+            # else is dropped: a `delivered` row is irreversible, so honouring a foreign ack does not
+            # merely mislabel a delivery, it destroys the real recipient's message.
+            # Scanned over the outbox directly rather than via pending_for(), which copies every
+            # matching entry into a new dict: this runs on EVERY delivery, and the question is a
+            # boolean. Reading sb._outbox here matches what resend_pending() and write_state()
+            # already do.
+            if not any(e["id"] == mid and e["to"] == ext for e in sb._outbox):
+                sb.touch(ext)
+                return
             awaiting.pop(mid, None)
             if m.get("accepted") is True:
                 sb.mark_delivered(mid, str(m.get("session_id") or sb.session_of(ext) or "feed"))

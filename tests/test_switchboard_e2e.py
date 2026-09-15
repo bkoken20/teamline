@@ -255,6 +255,29 @@ async def run(tmp):
     ck("every module in the package is described in the README",
        all(m in _readme0() for m in _mods), [m for m in _mods if m not in _readme0()])
 
+    # ...and a reader must be able to find the parts of the REPOSITORY, not only the package. The
+    # check above scans teamline/*.py, so it stayed green while two top-level directories went
+    # unmentioned: deploy/ -- which holds the docker deployment the security section RECOMMENDS, its
+    # run command surviving only as a comment INSIDE the file a reader had not been told exists --
+    # and docs/, which holds the protocol reference and the onboarding guide.
+    # Only directories that are part of the REPOSITORY. The broker's documented default writes its
+    # ledger to ./data relative to the working directory, so a check over every directory present
+    # goes red merely because somebody followed the quickstart from the repo root -- a red suite
+    # caused by using the software as documented. .gitignore already names what is not ours; read it
+    # rather than hard-coding one name and meeting the next runtime directory the same way.
+    import fnmatch as _fn0
+    _root = os.path.dirname(PKG)
+    _gi = os.path.join(_root, ".gitignore")
+    _ignored = [ln.strip().rstrip("/") for ln in io.open(_gi, encoding="utf-8")
+                if ln.strip().endswith("/") and not ln.lstrip().startswith("#")] \
+        if os.path.isfile(_gi) else []
+    _tops = [d for d in sorted(os.listdir(_root))
+             if os.path.isdir(os.path.join(_root, d))
+             and not d.startswith(".") and d != "__pycache__"
+             and not any(_fn0.fnmatch(d, p) for p in _ignored)]
+    _undesc = [d for d in _tops if (d + "/") not in _readme0() and ("`" + d + "`") not in _readme0()]
+    ck("every top-level directory is described in the README, not just the package", not _undesc, _undesc)
+
     # ---- a client that cannot reach the broker must say WHAT it tried ----------------------------
     # TEAMLINE_PORT moves the broker; it does not move the clients, which default to TEAMLINE_URL.
     # Get that wrong -- and the shipped compose file sets TEAMLINE_PORT, so people will -- and the

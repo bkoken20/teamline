@@ -640,6 +640,64 @@ believed in the first place.
 
 ---
 
+## B-L1 — the README recommends a deployment it never says exists
+
+**Severity:** medium. It is the security section's own advice that a reader cannot follow.
+
+**On the numbering.** The review queue — 43 items, of which these entries close 15 — did not travel
+between machines; only its per-group counts did. The three group-B items still open are therefore
+known by count and not by content, and this is **not** one of them recovered. It was found by
+re-deriving what group B measures: setting the repository up from the README, cold, on a machine that
+had never run it. It is numbered `B-L1` rather than `B6` so that nobody later reads it as the
+original finding.
+
+**What was wrong.** The security section tells you how to deploy this safely — *"Bind it to loopback
+and reach it through a VPN or an SSH tunnel, as the shipped `docker-compose.yml` does"* — and the
+port section refers to the same file again. Neither says where it is. The file map covered the
+package and `tests/`, so `deploy/` and `docs/` appeared nowhere in the README at all: the reader is
+pointed at the recommended deployment, cannot find it, and is given no command to run it. The one
+invocation that exists lives in a comment *inside* the file they have not been told about. `docs/`
+went the same way, which left `PROTOCOL.md` and `ONBOARDING.md` invisible to anyone who had read
+only the README.
+
+The compose file itself is fine — it publishes on `127.0.0.1` exactly as the README claims. This is
+not a false statement; it is a true statement about an unreachable file.
+
+**The test that should have caught it, and did not.** One existed: *every module in the package is
+described in the README* (pinned as B5). It scans `teamline/*.py`, so it stayed green while two
+top-level directories went undescribed — it checks the package, and the defect was in the
+repository. Widened to every top-level directory it went red, naming `['deploy', 'docs']`.
+
+**The fix.** Two rows in the map: `deploy/`, with the run command promoted out of the comment, and
+`docs/` with what each file in it is for. The lead sentence said "Seven files" for six; it now counts
+the package correctly and says the table maps the repository.
+
+**What attacking the fix turned up, and it was a real defect in the fix.** The broker's documented
+default writes its ledger to `./data` relative to the working directory. Run the quickstart from the
+repo root — which is what the README tells you to do — and a `data/` directory appears, whereupon the
+new check went **red demanding that the ledger directory be documented**. A suite turned red by using
+the software as documented. Reproduced by creating the directory: exit 1, `[['data']]`.
+
+Fixed by considering only directories that are part of the repository, read from `.gitignore` rather
+than hard-coding the name — `data/`, `calls/`, `venv/`, `*.egg-info/` and the rest are declared there
+already, so the next runtime directory is handled without another edit. Re-derived afterwards that
+the exclusion had not made the check unfalsifiable: the perturbation still fires.
+
+**The check.** Every top-level directory that is not git-ignored must be named in the README.
+Perturbing it — removing `deploy/` from the map, *all* occurrences for B5's reason, since the run
+command on the same row carries the string a second time — turns it red.
+
+**A limit, stated rather than fixed.** `dist/` is not in `.gitignore`, so a build artefact by that
+name would still demand a README entry. That is arguably a gap in `.gitignore` rather than in this
+check, and fixing it here would batch a second defect into this one's commit.
+
+**Not verified.** The `docker compose -f deploy/docker-compose.yml up -d` line is the compose file's
+own documented invocation, moved to where it can be found. It has **not** been executed — running
+Docker on this machine belongs to another session — so this entry claims the command is now
+findable, not that it was proven to work here.
+
+---
+
 ## The perturbation runner — how these claims are checked
 
 Every entry above ends with a line like "perturbing X turns the check red". That claim is only worth

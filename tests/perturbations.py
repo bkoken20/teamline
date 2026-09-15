@@ -129,4 +129,12 @@ PERTURBATIONS = [
          why="removes a module from the map. NOTE: this one must replace EVERY occurrence -- the "
              "first attempt changed only the table row, the filename survived in the prose above it, "
              "the check passed, and a false claim went into the fix log because the output was not read"),
+
+    dict(id="B-L1", suite="e2e", file="README.md",
+         find="deploy/", repl="the deployment directory ", all_occurrences=True,
+         must_fail="every top-level directory is described in the README, not just the package",
+         why="takes deploy/ back out of the map, which is the state the repository shipped in -- the "
+             "security section recommended the compose file and nothing said where it lived. ALL "
+             "occurrences, for B5's reason: the run command on the same table row carries the string "
+             "a second time, so replacing the cell alone would leave the check green"),
 ]

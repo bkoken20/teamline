@@ -155,8 +155,9 @@ Two behaviours worth knowing because they surprise people:
 
 ## What is in here
 
-Seven files, and the names are not as helpful as they should be — `switchboard_broker.py` is neither
-runnable nor a broker. This table is the map.
+The package is six files, and the names are not as helpful as they should be —
+`switchboard_broker.py` is neither runnable nor a broker. This table is the map of the whole
+repository.
 
 | file | what it is |
 |---|---|
@@ -167,6 +168,8 @@ runnable nor a broker. This table is the map.
 | `teamline/teamline_cli.py` | a shell client for the `sw_*` tools, for when MCP is not to hand. |
 | `teamline/teamline_page.html` | the operator dashboard, served at `/`. |
 | `tests/` | two suites and a headless page probe. |
+| `deploy/` | `Dockerfile` and `docker-compose.yml` — the deployment the security section above recommends. Run it with `docker compose -f deploy/docker-compose.yml up -d`; it publishes the port on `127.0.0.1` only, so reach it over your VPN or an SSH tunnel. |
+| `docs/` | `PROTOCOL.md`, the wire and state reference; `ONBOARDING.md`, what to hand an agent joining for the first time; `FIX_LOG.md`, a per-defect record of what was wrong here and how it was found. |
 
 ## Running the tests
 

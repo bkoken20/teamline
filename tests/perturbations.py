@@ -179,10 +179,21 @@ PERTURBATIONS = [
              "said every check can fail, which devalues the 24 that are real"),
 
     dict(id="D-L2", suite="e2e", file="docs/FIX_LOG.md",
-         find="This paragraph originally declared the",
-         repl="This paragraph said the history is clean, declaring the",
-         must_fail="the fix log does not claim a clean history while the commits carry private names",
-         why="puts the false assertion about the commit history back into the log. It was there when "
-             "written, it was wrong when written, and no check looked at the history at all -- the "
-             "one scan that did was case-sensitive against the wrong spellings"),
+         find="HISTORY STATUS (checked by the suite): CLEAN",
+         repl="HISTORY STATUS (checked by the suite): CARRIES PRIVATE NAMES",
+         must_fail="the fix log's stated history status matches the commits, in both directions",
+         why="makes the log state the OPPOSITE of what the commits say. This perturbs the direction "
+             "the first version of the check could not reach: it only forbade claiming clean while "
+             "dirty, so once the history was rewritten its condition became unreachable, the log "
+             "could say anything, and this very claim stopped firing -- caught by this runner"),
+
+    dict(id="D-L2b", suite="e2e", file="docs/FIX_LOG.md",
+         find="**HISTORY STATUS (checked by the suite): CLEAN**",
+         repl="**HISTORY STATUS (checked by the suite): CLEAN**\n\n*(illustrative, from an older "
+              "entry: HISTORY STATUS (checked by the suite): CARRIES PRIVATE NAMES)*",
+         must_fail="the fix log's stated history status matches the commits, in both directions",
+         why="plants a SECOND, contradicting status marker, phrased as an innocent quotation -- which "
+             "is how it would really arrive. Demonstrated before the fix: re.search took the first "
+             "match and the check PASSED with two markers disagreeing. Silently choosing between "
+             "contradictory claims is worse than either claim"),
 ]

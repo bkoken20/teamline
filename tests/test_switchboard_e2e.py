@@ -327,16 +327,31 @@ async def run(tmp):
     _dirty = sorted(t for t, v in _seen.items() if v)
     _blind = sorted(t for t, v in _seen.items() if v is None)
     _logtxt = io.open(os.path.join(_root, "docs", "FIX_LOG.md"), encoding="utf-8").read()
-    _claims = "history is clean" in _logtxt
-    # "Could not look" is NOT "clean". Walking this found None collapsing to false through a plain
-    # truth test, so the check passed while knowing nothing -- guarding the most expensive claim in
-    # the log. The two cases are different, though: with no .git there is no history in this copy to
-    # leak, and nothing to verify; with a .git present, failing to read it is a failure of the check.
+    # "Could not look" is NOT "clean". Walking an earlier version found None collapsing to false
+    # through a plain truth test, so the check passed while knowing nothing. The two cases differ:
+    # with no .git there is no history in this copy to leak and nothing to verify; with a .git
+    # present, failing to read it is a failure of the check itself.
     _has_git = os.path.isdir(os.path.join(_root, ".git"))
-    ck("the fix log does not claim a clean history while the commits carry private names",
-       not (_dirty and _claims) and not (_blind and _has_git),
+    #
+    # BIDIRECTIONAL. The first version only forbade claiming CLEAN while dirty. Once the history was
+    # rewritten and became clean, its condition was unreachable: the log could say anything and the
+    # check still passed -- and the perturbation pinning it stopped firing, which the runner caught
+    # and reported. A one-directional check silently expires the moment the thing it guards is fixed.
+    #
+    # So the log carries an explicit CURRENT status and the check compares it with the measurement,
+    # disagreeing in either direction. Prose is not used for this: the log legitimately describes the
+    # history's past in past tense, and a check reading prose cannot tell a description from a claim.
+    # EXACTLY ONE marker. re.search takes the first match, so a second one -- a later entry quoting
+    # this line as an example, the way D-L1's own comment once quoted a leaked name -- would be read
+    # as the real status, and two disagreeing markers would resolve silently to whichever came first.
+    # Silently choosing between contradictory claims is worse than either claim.
+    _ms = _re0.findall(r"HISTORY STATUS \(checked by the suite\): (CLEAN|CARRIES PRIVATE NAMES)", _logtxt)
+    _stated = _ms[0] if len(_ms) == 1 else None
+    _measured = "CARRIES PRIVATE NAMES" if _dirty else "CLEAN"
+    ck("the fix log's stated history status matches the commits, in both directions",
+       bool(_stated) and _stated == _measured and not (_blind and _has_git),
        ("could not search the history of a real checkout: %s" % _blind) if (_blind and _has_git)
-       else ("history carries %d name(s) and the log asserts otherwise" % len(_dirty)))
+       else "log states %r, commits say %r" % (_stated, _measured))
 
     # ---- the verification must not claim more than it verifies -----------------------------------
     # The perturbation runner is this repository's strongest evidence, and its verdict read "every

@@ -727,6 +727,12 @@ that concluded the opposite.
 What survives from the original claim: the second commit was cleaning the grammatical wreckage of the
 rename rather than removing a name. What does not: anything about the history being free of them.
 
+**HISTORY STATUS (checked by the suite): CLEAN** — no private team name appears in any commit, in
+either case, across every ref. This line is not decoration: a check reads it and compares it with a
+live search of the history, and fails if the two disagree in *either* direction. It is here because
+prose cannot carry that claim — the paragraphs around it describe the history's past in the past
+tense, and a check reading prose cannot tell a description from an assertion about now.
+
 **RESOLVED, by rewriting the history on the repository owner's instruction.** Every commit was
 rewritten so that the three names are replaced by the public vocabulary this repository already uses
 for its teams, in blobs and in commit messages alike. Upper case only, which is all that was there; a

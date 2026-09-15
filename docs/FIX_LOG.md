@@ -344,3 +344,46 @@ minutes apart. Perturbing the id back to its old form turns the check red.
 **Note for anyone writing a client.** Message ids here are meaningful, not opaque: the broker
 deduplicates on them. If you generate ids yourself, two different events must never produce the same
 one — this defect is what that costs.
+
+---
+
+## A7 — a ring could pin a caller's lane forever
+
+**Severity:** medium-high. A caller could be permanently unable to place any call, with no way out
+and nothing to tell it why.
+
+**What was wrong.** The ninety-second answer timer counts only the **callee's idle time**, and that
+is deliberate: a session mid-turn cannot see a ring, so holding the timer while it is busy is right.
+What was missing is an outer bound. `CALL_CAP_S` applied only once a call was already open, so a
+callee whose watcher kept reporting "still running" never advanced the idle timer and the ring never
+ended. An extension holds one call at a time, so the **caller's** lane stayed pinned — and `decline`
+belongs to the callee while `hangup` requires an open call, so the caller had no escape either.
+
+**How it was found.** The correctness reviewer. Reproducing it took two attempts, and the first was
+wrong in an instructive way: letting the callee's feed simply go quiet ended the call after an hour
+via the feed-silence rule, which looks like the system behaving correctly. The defect only appears
+when the callee's watcher stays healthy and keeps pinging — a busy session, not a dead one. A
+reproduction that confirms the wrong mechanism would have dismissed a real finding.
+
+Measured: twenty-four hours of a mid-turn callee, `ring_wait` still at zero, the caller blocked with
+`alpha/ringer already holds call …`.
+
+**The test that should have caught it.** None. The suite covered a ring that times out and a ring to
+a busy session that is correctly held; it never let the hold run long enough to ask whether it ever
+ends.
+
+**The fix.** A ring now gets the same cap an open call gets — `CALL_CAP_S`, measured from when it
+started ringing — reusing the existing `ring_timeout` event with a reason that says which bound
+fired, so the ledger format and replay are unchanged. Within the cap the etiquette rule is exactly
+as before.
+
+**What attacking the fix found.** Nothing that changed the code, but one thing worth stating: this
+**bounds the damage, it does not remove it**. A caller is still stuck for up to two hours and still
+cannot withdraw its own ring. Giving the caller a cancel is a genuine gap, and it is queued as its
+own item rather than folded in here — adding an API is a feature, and this defect was "stuck
+forever", which the cap fixes.
+
+Perturbing the outer bound away turns the check red.
+
+**Verified by.** Both suites green on exit codes; two checks, the second asserting the caller's lane
+is usable again afterwards, since freeing the lane is the point rather than ending the call.

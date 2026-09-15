@@ -680,9 +680,17 @@ class Switchboard:
                 if not (callee and callee["running"]):
                     c["ring_wait"] += t - c["last_tick"]
                 c["last_tick"] = t
-                if c["ring_wait"] > RING_TIMEOUT_S:
+                # ...but the hold needs an OUTER bound. A callee whose watcher keeps reporting
+                # "still running" never advances the idle timer, and CALL_CAP_S used to apply only
+                # once a call was open -- so a ring pinned the CALLER's lane indefinitely, and a
+                # lane holds one call at a time. A ring now gets the same cap an open call gets.
+                capped = t - c["started"] > CALL_CAP_S
+                if c["ring_wait"] > RING_TIMEOUT_S or capped:
                     self._commit("ring_timeout", ext=c["callee"], call_id=c["call_id"],
-                                 reason=f"no answer in {RING_TIMEOUT_S}s of idle time", msg_id=uuid.uuid4().hex)
+                                 reason=(f"unanswered for more than {CALL_CAP_S // 3600} h (the callee "
+                                         f"reported itself mid-turn throughout)" if capped
+                                         else f"no answer in {RING_TIMEOUT_S}s of idle time"),
+                                 msg_id=uuid.uuid4().hex)
                     self._write_transcript(c)
                     out["ring_timeout"].append(c["call_id"])
             elif c["state"] == "IN_CALL":

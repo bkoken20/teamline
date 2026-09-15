@@ -549,6 +549,30 @@ def main():
     second = [e for e in sn2.pending_for("alpha/aa") if e["kind"] == "nudge"]
     ck("...and nudges AGAIN when it goes quiet a second time", len(second) == 1, second)
 
+    # ---- a ring must not hold a caller's lane forever.
+    # The 90 s answer timer counts only the CALLEE'S IDLE time, deliberately: a session mid-turn
+    # cannot see a ring, so holding the timer is right. But the hold had no outer bound, and
+    # CALL_CAP_S only ever applied to a call that was already open. A callee whose watcher keeps
+    # pinging "still running" therefore pinned the CALLER's extension indefinitely -- and a lane
+    # holds one call at a time, so the caller could place no other call, with no way to withdraw.
+    SBr, sr, cr = fresh(tempfile.mkdtemp(prefix="sb_"))
+    sr.register("alpha", "ringer", now="n", feed=True)
+    sr.register("beta", "midturn", now="n", session_id="sess-MT", feed=True)
+    sr.set_running("beta", {"sess-MT": True})
+    rr = sr.call("alpha", "ringer", "beta/midturn", "s", "o")
+    for _ in range(int(SBr.CALL_CAP_S / 25) + 10):        # the watcher keeps pinging, mid-turn throughout
+        cr.t += 25
+        sr.set_running_ext("beta/midturn", True)
+        sr.tick()
+        if sr._calls[rr["call_id"]]["state"] != "RINGING":
+            break
+    held = sr._calls[rr["call_id"]]
+    ck("a ring held by a permanently mid-turn callee still ends at the call cap",
+       held["state"] == "ENDED", (held["state"], "%.1f h" % ((cr.t - held["started"]) / 3600.0)))
+    ck("...which frees the caller's lane to be used again",
+       sr.call("alpha", "ringer", "beta/midturn", "s2", "o2")["call_id"] is not None,
+       dirmap(sr)["alpha/ringer"]["state"])
+
     # ---- 8. wait buffering
     async def wcase():
         SB3, s3, c3 = fresh(tempfile.mkdtemp(prefix="sb_"))

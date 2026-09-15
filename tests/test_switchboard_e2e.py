@@ -302,6 +302,36 @@ async def run(tmp):
                        for _w in _private if _w in _txt]
     ck("no lane name from the private deployment survives in the publish tree", not _leaks, _leaks[:8])
 
+    # ---- the README counts ITSELF, and nothing checked the counts --------------------------------
+    # Three separate numbers in this file described the repository and drifted out of date: the file
+    # count, the suite count, and the line counts. A number nobody checks is a statement that becomes
+    # false the next time anyone adds a file -- and this is a public repository, where those are the
+    # cheapest claims for a reader to test.
+    _tdir = os.path.dirname(os.path.abspath(__file__))
+    _suites = sorted(f for f in os.listdir(_tdir) if f.startswith("test_") and f.endswith(".py"))
+    _wordn = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven"}
+    _wrong = ["%s suites" % w for k, w in _wordn.items() if k != len(_suites)]
+    ck("the README states no suite count that contradicts tests/",
+       not [p for p in _wrong if p in _readme0()], [p for p in _wrong if p in _readme0()])
+    ck("...and every suite is named in it", all(s in _readme0() for s in _suites),
+       [s for s in _suites if s not in _readme0()])
+
+    # The line counts are hedged with "Roughly", so they are checked as a BAND, not a figure. 20% is
+    # wide enough that ordinary work does not trip it and narrow enough to catch a claim that has
+    # stopped being true -- the tests figure was out by 70%.
+    def _loc(d, pat):
+        return sum(len(io.open(os.path.join(d, f), encoding="utf-8", errors="replace").read().splitlines())
+                   for f in os.listdir(d) if f.endswith(pat))
+    _impl, _test = _loc(PKG, ".py"), _loc(_tdir, ".py")
+    _claimed = _re0.search(r"Roughly ([\d,]+) lines of implementation and ([\d,]+) lines of", _readme0())
+    _ci, _ct = (int(_claimed.group(1).replace(",", "")), int(_claimed.group(2).replace(",", ""))) if _claimed else (0, 0)
+    # The NAME must be constant: the perturbation runner addresses checks by name, so a name carrying
+    # a computed number cannot be pinned and would drift out of reference on the next added line.
+    # The numbers belong in the failure detail, which is only printed when it fails.
+    ck("the README's 'roughly N lines' claims are within 20% of the real counts",
+       bool(_claimed) and abs(_ci - _impl) <= 0.2 * _impl and abs(_ct - _test) <= 0.2 * _test,
+       "claimed impl=%s tests=%s; actual impl=%d tests=%d" % (_ci, _ct, _impl, _test))
+
     # ---- a client that cannot reach the broker must say WHAT it tried ----------------------------
     # TEAMLINE_PORT moves the broker; it does not move the clients, which default to TEAMLINE_URL.
     # Get that wrong -- and the shipped compose file sets TEAMLINE_PORT, so people will -- and the

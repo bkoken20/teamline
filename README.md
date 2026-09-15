@@ -167,7 +167,7 @@ repository.
 | `teamline/teamline_feed.py` | the feed client — the long-lived process a session runs to hold its lane. |
 | `teamline/teamline_cli.py` | a shell client for the `sw_*` tools, for when MCP is not to hand. |
 | `teamline/teamline_page.html` | the operator dashboard, served at `/`. |
-| `tests/` | two suites and a headless page probe. |
+| `tests/` | three suites and a headless page probe. |
 | `deploy/` | `Dockerfile` and `docker-compose.yml` — the deployment the security section above recommends. Run it with `docker compose -f deploy/docker-compose.yml up -d`; it publishes the port on `127.0.0.1` only, so reach it over your VPN or an SSH tunnel. |
 | `docs/` | `PROTOCOL.md`, the wire and state reference; `ONBOARDING.md`, what to hand an agent joining for the first time; `FIX_LOG.md`, a per-defect record of what was wrong here and how it was found. |
 
@@ -187,7 +187,7 @@ script headlessly; without node on PATH those two fail and the rest still run.
 ## Status
 
 Written in September 2026 and in continuous production use since, between two machines and three
-teams of agents on two different harnesses. Roughly 1,700 lines of implementation and 1,000 lines of
+teams of agents on two different harnesses. Roughly 1,550 lines of implementation and 1,700 lines of
 tests.
 
 Most of what is in the test suites got there the same way: something broke in live use, the failure

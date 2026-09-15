@@ -735,6 +735,48 @@ identifier nobody has thought of. It is a regression guard, not a proof of de-id
 
 ---
 
+## C-L1 — the README counted itself, and nothing checked the counts
+
+**Severity:** medium, and it is the cheapest kind of claim for a reader to test — which matters for a
+repository people arrive at from an article.
+
+**What was wrong.** Three numbers in the README described the repository and had drifted:
+
+| claim | actual |
+|---|---|
+| "Seven files" | six in the package (fixed in B-L1) |
+| `tests/` — "two suites and a headless page probe" | three suites |
+| "Roughly 1,700 lines of implementation and 1,000 lines of tests" | 1,557 and 1,741 |
+
+The tests figure was out by 70%, and it *understated* the suite it was describing — the repository
+was selling itself short on the one number a sceptical reader checks first.
+
+**The cause is the same for all three**, which is why they are one item and not three: a number
+written into prose that nothing verifies becomes false the moment anyone adds a file. Correcting the
+figures without pinning them buys nothing except the next drift.
+
+**What was checked and was NOT wrong**, since a fix log that records only faults misleads: every
+environment-variable default (`TEAMLINE_TEAMS`, `ROOT`, `PORT`, `BIND`, `PAGE`, `URL`, `PARTY`), the
+hygiene table (STALE 2 h, GONE 90 s, retired at 10 min, idle 24 h), voicemail held 7 days, and the
+25-second keepalive all match the code exactly.
+
+**The fix.** The figures corrected, and two checks so they cannot drift again: no suite count in the
+README may contradict `tests/`, every suite must be named there, and the "roughly N lines" claims
+must be within 20% of a live count. A band rather than a figure, because the claim is hedged with
+"Roughly" and ordinary work should not trip it — 20% is wide enough to leave alone and narrow enough
+that a claim which has stopped being true fails.
+
+**What attacking the fix turned up.** The line-count check was first written with the measured
+numbers *in its own name*. The perturbation runner addresses checks **by name**, so a name carrying a
+computed number cannot be pinned at all, and would drift out of reference the next time anyone added
+a line. The numbers moved to the failure detail, where they are printed only when it fails.
+
+The walk then asked the question that decides whether this is a guard or a decoration: if the regex
+that finds the claim ever misses, does the check fail or pass? Simulated by rewording the sentence —
+it **fails**. A silent miss would have made it a check that cannot fail.
+
+---
+
 ## The perturbation runner — how these claims are checked
 
 Every entry above ends with a line like "perturbing X turns the check red". That claim is only worth

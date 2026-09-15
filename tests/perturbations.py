@@ -146,4 +146,17 @@ PERTURBATIONS = [
          must_fail="no lane name from the private deployment survives in the publish tree",
          why="puts back a lane name of the private deployment, which is the state the de-identifying "
              "rename left four comments in -- the team relabelled, the lane name untouched"),
+
+    dict(id="C-L1a", suite="e2e", file="README.md",
+         find="| `tests/` | three suites and a headless page probe. |",
+         repl="| `tests/` | two suites and a headless page probe. |",
+         must_fail="the README states no suite count that contradicts tests/",
+         why="puts back the stale suite count the repository shipped with -- there were three"),
+
+    dict(id="C-L1b", suite="e2e", file="README.md",
+         find="Roughly 1,550 lines of implementation and 1,700 lines of",
+         repl="Roughly 1,700 lines of implementation and 1,000 lines of",
+         must_fail="the README's 'roughly N lines' claims are within 20% of the real counts",
+         why="puts back the shipped figures: the tests claim was out by 70%, understating the suite "
+             "it was describing"),
 ]

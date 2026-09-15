@@ -302,6 +302,42 @@ async def run(tmp):
                        for _w in _private if _w in _txt]
     ck("no lane name from the private deployment survives in the publish tree", not _leaks, _leaks[:8])
 
+    # ---- the log must not claim about the HISTORY what the history does not support --------------
+    # D-L1 asserted "The history is clean: the real team names never entered it." That was FALSE. The
+    # check above reads the working TREE; nothing read the commits, and the one scan that did was
+    # case-sensitive on a single spelling while the names sit in the history in CAPITALS -- which the
+    # very commit it examined announces in its own title ("a case-sensitive rename missed"). A push
+    # publishes every commit, so a false claim about the history is the most expensive kind here.
+    #
+    # This links a REPOSITORY fact to a DOCUMENTATION obligation, the same shape as C-L2. It does not
+    # demand a clean history -- rewriting that is the owner's decision, not a test's -- only that the
+    # log never claim one the commits do not support. Needles are assembled from fragments: spelled
+    # out, this check would itself write the private names into the tree it is guarding.
+    _terms = tuple(a + b for a, b in (("project", "-one"), ("proje", "ct-two"), ("proje", "ct-three")))
+
+    def _in_history(term):
+        """True / False / None, where None means 'could not look' -- never silently False."""
+        try:
+            r = subprocess.run(["git", "log", "--all", "-i", "--pickaxe-regex", "-S", term, "--oneline"],
+                               cwd=_root, capture_output=True, text=True, timeout=180)
+            return bool(r.stdout.strip()) if r.returncode == 0 else None
+        except Exception:
+            return None
+    _seen = {t: _in_history(t) for t in _terms}
+    _dirty = sorted(t for t, v in _seen.items() if v)
+    _blind = sorted(t for t, v in _seen.items() if v is None)
+    _logtxt = io.open(os.path.join(_root, "docs", "FIX_LOG.md"), encoding="utf-8").read()
+    _claims = "history is clean" in _logtxt
+    # "Could not look" is NOT "clean". Walking this found None collapsing to false through a plain
+    # truth test, so the check passed while knowing nothing -- guarding the most expensive claim in
+    # the log. The two cases are different, though: with no .git there is no history in this copy to
+    # leak, and nothing to verify; with a .git present, failing to read it is a failure of the check.
+    _has_git = os.path.isdir(os.path.join(_root, ".git"))
+    ck("the fix log does not claim a clean history while the commits carry private names",
+       not (_dirty and _claims) and not (_blind and _has_git),
+       ("could not search the history of a real checkout: %s" % _blind) if (_blind and _has_git)
+       else ("history carries %d name(s) and the log asserts otherwise" % len(_dirty)))
+
     # ---- the verification must not claim more than it verifies -----------------------------------
     # The perturbation runner is this repository's strongest evidence, and its verdict read "every
     # fix is load-bearing and every check can fail". It pins the claims made in the fix log -- a

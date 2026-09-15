@@ -177,4 +177,12 @@ PERTURBATIONS = [
          must_fail="the perturbation runner does not claim to verify every check when it pins a subset",
          why="puts back the verdict the repository shipped with -- it pinned 24 of 178 checks and "
              "said every check can fail, which devalues the 24 that are real"),
+
+    dict(id="D-L2", suite="e2e", file="docs/FIX_LOG.md",
+         find="This paragraph originally declared the",
+         repl="This paragraph said the history is clean, declaring the",
+         must_fail="the fix log does not claim a clean history while the commits carry private names",
+         why="puts the false assertion about the commit history back into the log. It was there when "
+             "written, it was wrong when written, and no check looked at the history at all -- the "
+             "one scan that did was case-sensitive against the wrong spellings"),
 ]

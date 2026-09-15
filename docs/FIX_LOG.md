@@ -709,9 +709,30 @@ see. One of them sat in shipped source, not just tests.
 
 **How it was found.** Not from the review queue: that queue did not survive the move between
 machines, so the group-D items are known by count and not by content. This was found by scanning the
-tree and, more usefully, the **history** — a push publishes all commits, not the working tree. The
-history is clean: the real team names never entered it, and the commit that "removed an identity"
-turns out to have been cleaning the grammatical wreckage the rename left, not a name.
+tree and, more usefully, the **history** — a push publishes all commits, not the working tree.
+
+**🔴 A CORRECTION TO THIS ENTRY, and of the worst kind.** This paragraph originally declared the
+commit history free of the private team names. That was false, and it was false when it was written.
+Two commits on `main` carry them: `11c6492`, the initial commit, in source text, and `2e11fad`, in
+its own commit message. A later cold review found them.
+
+The check that produced the wrong answer was `git log -S`, which is **case-sensitive**, run against
+the lower-case and mixed-case spellings. The names are in the history in CAPITALS, so it returned
+zero, and the zero was read as absence. `git log --all -i --pickaxe-regex -S` finds every one of
+them. Worse, the commit under examination at that moment announces the cause in its own title — a
+*case-sensitive rename* having missed the identity — and that title was quoted in the same paragraph
+that concluded the opposite.
+
+What survives from the original claim: `2e11fad` was cleaning the grammatical wreckage of the rename
+rather than removing a name. What does not: anything about the history being free of them.
+
+**This is not fixed here, and it blocks publication.** Clearing it means rewriting history, and the
+author identities with it — the repository owner's decision, not something an entry in a fix log
+should quietly perform. Until then, a push publishes the names.
+
+*(The false phrase is deliberately paraphrased rather than quoted above: a check now asserts that this
+log does not contain that assertion, and quoting it verbatim would trip that check. Same reason the
+de-identification check's own comment carries no example.)*
 
 **The fix.** The four comments keep their engineering fact and lose the pointer: *one lane held five
 holders* rather than a named lane. Numbered `D-L1`, not a queue id, for the reason given in B-L1.

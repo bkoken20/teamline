@@ -533,3 +533,36 @@ That is worth generalising: a check that greps source will eventually match the 
 defect rather than the defect. Compare values, not text, whenever you can.
 
 Perturbing the instructions back turns the check red.
+
+---
+
+## B3 — the README documented no configuration at all
+
+**Severity:** high for a first-time reader. "How do I set this up" is the first question anyone has,
+and the repository answered almost none of it.
+
+**What was wrong.** Five of the seven environment variables the package reads — the data directory,
+the port, the bind address, the page path, and the client's broker URL — appeared **nowhere** in the
+README. `TEAMLINE_TEAMS` appeared once, inline in a command, with no explanation of what it did or
+that it was the only access control a deployment has. Anyone wanting to change where the ledger is
+written, or which teams exist, had to read the source.
+
+**The test that should have caught it.** None, and prose has no test — but the *rule* does. The new
+check extracts every `os.environ.get("…")` name the package reads and requires each to appear in the
+README. It reported exactly the five that were missing, and it fails for any variable added later
+without documentation.
+
+This is the same lesson as the previous entry, in a different costume: do not test the prose, test
+the property the prose has to satisfy.
+
+**The fix.** A configuration section listing every variable, its default, and what it actually does
+— including that `TEAMLINE_ROOT` is relative to the working directory you launch from rather than to
+the repository, which is the kind of detail that is obvious in the source and invisible from outside.
+
+**A note on method.** The first draft of this fix also documented the port-versus-client-URL trap.
+That is a separate queue item with its own behaviour to reproduce, so it was withdrawn from this
+change and left for its own turn. Fixing two findings in one edit is how a fix becomes unattributable
+when something later breaks.
+
+Perturbing a row out of the table turns the check red, naming the variable that lost its
+documentation.

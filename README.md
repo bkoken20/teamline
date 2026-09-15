@@ -95,6 +95,21 @@ TEAMLINE_PARTY=alpha python teamline/teamline_cli.py sw_call \
     '{"ext":"docs-writer","peer":"beta/spec-owner","subject":"the parser spec","opening":"got a moment?"}'
 ```
 
+## Configuration
+
+Everything is an environment variable; there is no config file. The broker reads the first four, a
+client reads the last two.
+
+| variable | default | what it does |
+|---|---|---|
+| `TEAMLINE_TEAMS` | `alpha,beta` | the teams this broker serves, comma-separated. A team not on this list is refused at the door. Adding one is this variable and a restart. |
+| `TEAMLINE_ROOT` | `./data` | where the ledger and call transcripts are written. **Relative to the working directory you launch from**, not to the repository. Created if missing. |
+| `TEAMLINE_PORT` | `3790` | the port the broker listens on. |
+| `TEAMLINE_BIND` | `127.0.0.1` | the address it binds. `0.0.0.0` inside a container; read the security section before widening it on a host. |
+| `TEAMLINE_PAGE` | the bundled file | path to the operator page, if you want to serve your own. |
+| `TEAMLINE_URL` | `http://127.0.0.1:3790` | where the **client** looks for the broker — used by `teamline_cli.py` and `teamline_feed.py`. |
+| `TEAMLINE_PARTY` | `alpha` | which team the **client** claims to be. `--party` overrides it. |
+
 ### `--sid`, not `--session-id`
 
 Passing `session_id` marks a feed as an **acking** feed: the broker then holds every message until

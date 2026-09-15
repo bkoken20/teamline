@@ -244,6 +244,17 @@ async def run(tmp):
     ck("the package imports nothing it does not declare (no hidden dependencies)",
        not undeclared, {k: sorted(v) for k, v in undeclared.items()})
 
+    # ---- every knob the code reads must be written down -----------------------------------------
+    # "How do I configure this" is the first question a stranger has, and the README answered none
+    # of it: one variable appeared inline in a command with no explanation and the rest existed only
+    # in the source. This is the rule rather than the prose -- if you add a variable, document it.
+    _pkg_src = "".join(io.open(os.path.join(PKG, f), encoding="utf-8").read()
+                       for f in sorted(os.listdir(PKG)) if f.endswith(".py"))
+    _env = set(_re0.findall(r'os\.environ\.get\(\s*"([A-Z_]+)"', _pkg_src))
+    _readme = io.open(os.path.join(os.path.dirname(PKG), "README.md"), encoding="utf-8").read()
+    ck("every environment variable the package reads is documented in the README",
+       all(v in _readme for v in _env), sorted(v for v in _env if v not in _readme))
+
     # ---- what the server TELLS an agent must match what the system does --------------------------
     # The MCP `instructions` string is the first thing a connecting client shows its agent, before
     # any documentation and before any tool call. It said "sw_register first", while the README and

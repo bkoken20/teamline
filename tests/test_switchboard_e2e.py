@@ -7,6 +7,7 @@ Run: python tests/test_switchboard_e2e.py
 """
 import asyncio
 import io
+import re as _re0
 import json
 import os
 import subprocess
@@ -242,6 +243,26 @@ async def run(tmp):
                     undeclared.setdefault(_mod, set()).add(_name)
     ck("the package imports nothing it does not declare (no hidden dependencies)",
        not undeclared, {k: sorted(v) for k, v in undeclared.items()})
+
+    # ---- what the server TELLS an agent must match what the system does --------------------------
+    # The MCP `instructions` string is the first thing a connecting client shows its agent, before
+    # any documentation and before any tool call. It said "sw_register first", while the README and
+    # PROTOCOL both say that holding a feed IS the registration -- so an agent following its own
+    # tools' advice took the path that produces an UNREACHABLE lane. It also named one specific
+    # team, which is meaningless to anyone whose teams are named otherwise.
+    # Read the VALUE, not the source text. A regex over the source also matched the comment that
+    # explains what was wrong, so the check failed on its own explanation -- a grep finding your own
+    # prose. ast gives the string the agent actually receives.
+    import ast as _ast
+    _tree = _ast.parse(io.open(os.path.join(PKG, "teamline_broker.py"), encoding="utf-8").read())
+    _instr = next(_ast.literal_eval(kw.value)
+                  for n in _ast.walk(_tree) if isinstance(n, _ast.Call)
+                  and getattr(n.func, "id", "") == "MCPServer"
+                  for kw in n.keywords if kw.arg == "instructions")
+    ck("the server's own instructions do not send agents to sw_register first",
+       "sw_register first" not in _instr, _instr[:160])
+    ck("...and they name no particular team, since teams are configuration",
+       not [t for t in SBteams() if t in _instr], [t for t in SBteams() if t in _instr])
 
     # ---- sw_register must not privilege a team by NAME -------------------------------------------
     # The no-feed path read `t == "alpha"`, a literal team name, so renaming teams changed

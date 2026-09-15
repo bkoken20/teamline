@@ -500,3 +500,36 @@ Perturbing the privilege back turns two of the three checks red.
 **Verified by.** Three checks: that every team is treated identically, that a registration holding no
 feed is refused rather than claiming one, and that no lane anywhere reads LIVE with zero holders —
 the last being the shape of the phantom, stated as an invariant rather than a special case.
+
+---
+
+## B2 — the server told agents to do the opposite of what the documentation says
+
+**Severity:** high for adoption. This string is read by every agent that connects, before any
+documentation and before any tool call, so it outranks the README in practice.
+
+**What was wrong.** The MCP server's `instructions` opened with **"sw_register first"**. The README
+and `PROTOCOL.md` both say that holding a feed *is* the registration. An agent following the advice
+its own tools gave it therefore took the path that produces a lane nothing can deliver to — and had
+no reason to doubt it, because that advice arrived first and from the system itself.
+
+The same string also named one particular team, which means nothing to anyone whose teams are named
+otherwise.
+
+**The test that should have caught it.** None. Nothing in either suite had ever looked at the
+instructions string, even though it is the system's most-read sentence.
+
+**The fix.** Rewritten to say what the system does: you register by holding a feed; `sw_register`
+exists only for a session that cannot hold one, and its lane stays unreachable until something does.
+No team named.
+
+**What attacking the fix found — the check failed on its own explanation.** The first version of the
+check matched the source text with a regex, and the comment explaining the fix contains the phrase
+`"sw_register first"`. So the check went red because of the sentence describing what had been
+repaired. It now reads the *value* through the syntax tree rather than the text around it, which is
+what an agent actually receives.
+
+That is worth generalising: a check that greps source will eventually match the prose about the
+defect rather than the defect. Compare values, not text, whenever you can.
+
+Perturbing the instructions back turns the check red.

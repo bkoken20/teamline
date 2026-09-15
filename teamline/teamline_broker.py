@@ -42,10 +42,19 @@ def build(root=ROOT, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=90, state_
     observers = set()
 
     mcp = MCPServer("teamline", instructions=(
-        "TEAMLINE switchboard: named extensions per session. sw_register first (beta: your HOST_SESSION_ID); "
-        "sw_directory lists every extension with its 'now' line -- copy names from it, never type one from memory; "
-        "sw_call(ext=yours, peer='team/name', subject, opening). Etiquette: answer IMMEDIATELY, short "
-        "still-working lines, the answer, sw_busy before long work, HANG UP with a summary at once."))
+        # This is the FIRST thing a connecting client shows its agent, before any documentation and
+        # before any tool call, so it must agree with the rest of the system. It used to open with
+        # "sw_register first", which is the opposite of how registration works -- an agent following
+        # its own tools' advice ended up with a lane nothing could deliver to. It also named one
+        # particular team, which means nothing to anyone whose teams are named otherwise.
+        "TEAMLINE switchboard: one named extension per session, addressed as team/name. "
+        "YOU REGISTER BY HOLDING A FEED -- a long-lived WebSocket on /ws -- and holding it IS the "
+        "registration; sw_register is only for a session that cannot hold one, and its lane stays "
+        "unreachable until something holds a feed for it. "
+        "sw_directory lists every extension with its 'now' line -- copy peer names from it, never type "
+        "one from memory; sw_call(ext=yours, peer='team/name', subject, opening). "
+        "Etiquette: answer IMMEDIATELY, short still-working lines, the answer, sw_busy before long "
+        "work, HANG UP with a summary at once."))
     sw = SWB.wire(mcp, root, loop_ref, ring_timeout_s=ring_timeout_s, ack_timeout_s=ack_timeout_s,
                   feed_gone_s=feed_gone_s, state_every_s=state_every_s, backoff_s=backoff_s, port=PORT)
     sb = sw["sb"]

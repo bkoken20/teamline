@@ -212,3 +212,56 @@ rows — and each fires.
 
 **The fix.** The security section now states the operator surface separately, lists exactly what it
 exposes, and says plainly that there is no switch to turn it off.
+
+---
+
+## A4 — a lane marked down by silence never came back
+
+**Severity:** high. A healthy, connected session lost its line permanently and could not be told,
+because a session with no line cannot be rung.
+
+**What was wrong.** `tick()` presumes a keepaliving holder dead after `feed_gone_s` of quiet. That
+is right. But the holder's socket may be perfectly healthy and merely paused — a long turn, a stall,
+a suspended process — and when it resumed keepalives, **nothing restored the lane**:
+`set_running_ext()` only refreshed `last_seen`. `feed_up` stayed false and `gone_since` stayed set,
+so the lane read GONE while still connected, was retired ten minutes later, and its holder went on
+pinging into a lane that no longer existed.
+
+**The test that should have caught it.** None. The suite covered a feed going silent, and it covered
+a feed reconnecting on a *new* socket, but never a holder that goes quiet and then speaks again on
+the *same* one.
+
+**The fix.** A frame arriving on a lane's socket disproves the silence, so it restores the feed —
+ledgered, so a replay reaches the same state. Applied to the keepalive path and to any other inbound
+frame, since the argument is about frames rather than about pings. It cannot fire spuriously: a
+frame requires an open socket, and for a non-acking feed `feed_up` false means the socket itself is
+gone, so nothing can arrive on it. Every caller was checked — all five are inside `on_frame`.
+
+**What attacking the fix found — a real hole in it.** `_apply` cleared "gone" without knowing *why*
+it had been set, and `gone_since` has two very different causes. A quiet socket is **silence**. A
+host reporting that a session is not running is **evidence** — and a watcher is a separate process
+from the session it delivers to, so its socket being alive says nothing about whether that session
+still exists.
+
+The first version of the fix therefore resurrected a session its host had declared dead, in one
+specific ordering:
+
+```
+host says absent  ->  socket also stalls  ->  watcher pings  =>  LIVE     (evidence lost)
+```
+
+The reverse ordering looked fine and passed, which is exactly why it was worth attacking: in that
+order `feed_up` was still true, so the restore never fired and the hole stayed hidden.
+
+The lane now carries the *reason* it is gone. A frame clears only a lane that went quiet; a lane the
+host declared absent stays gone until the host says otherwise. First cause wins, and the host's word
+is the stronger evidence.
+
+**Verified by.** Both suites green on exit codes. Four checks: the recovery, the pure host-absent
+case, and the ordering that broke the first attempt. Both halves of the fix perturbed independently
+— removing the restore, and restoring without consulting the reason — and each turns its own check
+red.
+
+**A consequence, recorded.** Recovering a lane does not resurrect a call that was ended as
+`peer_lost` while it was down. The caller was already told; the lane comes back for future traffic
+only. That is intended, and stated here so nobody reads it as a second bug.

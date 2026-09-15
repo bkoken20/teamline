@@ -448,6 +448,46 @@ def main():
     except SBc.SwitchError as e:
         ck("an unknown team is still refused, and the error names the real ones", "gamma" in str(e), e)
 
+    # ---- a feed marked down by SILENCE must recover when its holder speaks again.
+    # tick() presumes a watcher dead after feed_gone_s of quiet, which is right. But the holder's
+    # socket may be perfectly healthy -- a long turn, a stall, a paused process -- and when it
+    # resumes keepalives NOTHING restored the lane: set_running_ext() only refreshed last_seen.
+    # The lane then sat feed-down while connected, went GONE, and was retired, and its holder was
+    # never told because a session with no line cannot be rung.
+    SBs, ss, cs = fresh(tempfile.mkdtemp(prefix="sb_"))
+    ss.register("beta", "paused", now="n", session_id="sess-P", feed=True)
+    ck("an acking feed starts LIVE", dirmap(ss)["beta/paused"]["hygiene"] == "LIVE", dirmap(ss)["beta/paused"])
+    cs.t += 91                                     # past feed_gone_s (90) with no keepalive
+    out = ss.tick()
+    ck("silence past the window marks the feed down", "beta/paused" in out.get("feed_silent", []), out)
+    cs.t += 91                                     # ...and past the window again, so it reads GONE
+    ck("...which reads GONE once the window has run out", dirmap(ss)["beta/paused"]["hygiene"] == "GONE",
+       dirmap(ss)["beta/paused"])
+    ss.set_running_ext("beta/paused", True)        # the holder resumes keepalives on the SAME socket
+    ck("a keepalive on the same socket brings the lane back",
+       dirmap(ss)["beta/paused"]["hygiene"] == "LIVE", dirmap(ss)["beta/paused"])
+    # ...but a keepalive must NOT overrule the HOST. A watcher is a separate process from the session
+    # it delivers to: its socket being alive says nothing about whether the session still exists. When
+    # the host reports the session absent that is evidence, and a ping from the watcher must not wash
+    # it away.
+    ss.set_running("beta", {})                     # the host lists no sessions: this one is absent
+    ck("a session the host reports absent is GONE", dirmap(ss)["beta/paused"]["hygiene"] == "GONE",
+       dirmap(ss)["beta/paused"])
+    ss.set_running_ext("beta/paused", True)        # its watcher keeps pinging regardless
+    ck("...and its watcher's keepalive does NOT resurrect it",
+       dirmap(ss)["beta/paused"]["hygiene"] == "GONE", dirmap(ss)["beta/paused"])
+    # THE ORDERING THAT BROKE THE FIRST FIX. Above, the socket was never down, so the restore had
+    # nothing to fire on. Reverse it -- host says absent, THEN the socket stalls, THEN a ping -- and
+    # a restore that clears "gone" without knowing WHY it was set washes the host's evidence away.
+    ss.register("beta", "both", now="n", session_id="sess-B2", feed=True)
+    ss.set_running("beta", {})                     # 1. the host reports every beta session absent
+    cs.t += 91
+    ss.tick()                                      # 2. the socket goes quiet as well
+    cs.t += 91
+    ss.set_running_ext("beta/both", True)          # 3. and then the watcher speaks again
+    ck("a ping cannot withdraw the HOST's evidence, whichever failure came first",
+       dirmap(ss)["beta/both"]["hygiene"] == "GONE", dirmap(ss)["beta/both"])
+
     # ---- 8. wait buffering
     async def wcase():
         SB3, s3, c3 = fresh(tempfile.mkdtemp(prefix="sb_"))

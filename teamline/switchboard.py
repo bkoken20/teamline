@@ -116,6 +116,7 @@ class Switchboard:
             if e["feed"]:
                 e["feed_up"] = False
                 e["gone_since"] = e["gone_since"] or t
+                e["gone_reason"] = e.get("gone_reason") or "feed"
 
     def _commit(self, event, **f):
         t = self.now()
@@ -147,7 +148,7 @@ class Switchboard:
             self._ext[r["ext"]] = dict(ext=r["ext"], team=r["team"], name=r["name"], session_id=r.get("session_id"),
                                        feed=bool(r.get("feed")), feed_up=bool(r.get("feed")), now=r["now"], now_ts=t,
                                        derived=None, derived_ts=None, busy=None, running=False, last_seen=t,
-                                       gone_since=None, registered=t, sid=r.get("sid"))
+                                       gone_since=None, gone_reason=None, registered=t, sid=r.get("sid"))
         elif ev in ("retired", "unregister"):
             self._ext.pop(r["ext"], None)
         elif ev == "now":
@@ -170,15 +171,26 @@ class Switchboard:
                     continue
                 if e["session_id"] in live:
                     e["running"] = bool(live[e["session_id"]])
-                    e["gone_since"] = None
+                    e["gone_since"], e["gone_reason"] = None, None
                 else:
                     e["running"] = False
+                    # FIRST CAUSE WINS -- but the host's word is the stronger evidence, and only the
+                    # host can withdraw it.
                     e["gone_since"] = e["gone_since"] or t
+                    e["gone_reason"] = "host"
         elif ev == "feed":
             e = self._ext.get(r["ext"])
             if e:
                 e["feed_up"] = bool(r["up"])
-                e["gone_since"] = None if r["up"] else (e["gone_since"] or t)
+                if r["up"]:
+                    # A frame only disproves SILENCE. It cannot withdraw the host's report that the
+                    # session behind this watcher is gone: a watcher is a separate process, and its
+                    # socket being alive says nothing about the session it delivers to.
+                    if e.get("gone_reason") in (None, "feed"):
+                        e["gone_since"], e["gone_reason"] = None, None
+                else:
+                    e["gone_since"] = e["gone_since"] or t
+                    e["gone_reason"] = e.get("gone_reason") or "feed"
                 if r["up"]:
                     e["last_seen"] = t
         elif ev == "touch":
@@ -480,11 +492,27 @@ class Switchboard:
         for x in list(self._ext):
             self._release_vm(x)
 
+    def _feed_alive(self, ext):
+        """A frame arrived on this lane's socket, so the silence that marked it down is over.
+
+        tick() presumes a keepaliving holder dead after feed_gone_s of quiet, which is right -- but
+        the socket may be perfectly healthy and merely paused. Without this the lane stayed feed-down
+        while still connected, went GONE, and was retired, and its holder could not be told because a
+        session with no line cannot be rung. Ledgered, so a replay reaches the same state.
+
+        It cannot fire spuriously: a frame requires an open socket, and for a non-acking feed
+        `feed_up` false means the socket itself is gone, so nothing can arrive on it.
+        """
+        e = self._ext.get(ext)
+        if e and e["feed"] and not e["feed_up"]:
+            self._commit("feed", ext=ext, up=True, reason="the holder spoke again")
+
     def set_running_ext(self, ext, running):
         """Liveness from the watcher's keepalive ({"ping":1,"running":bool}); ledgered only on change."""
         e = self._ext.get(ext)
         if not e:
             return
+        self._feed_alive(ext)
         e["last_seen"] = self.now()
         if bool(running) != e["running"]:
             self._commit("running", ext=ext, running=bool(running))
@@ -499,6 +527,7 @@ class Switchboard:
 
     def touch(self, ext):
         if ext in self._ext:
+            self._feed_alive(ext)          # any frame disproves the silence, not only a keepalive
             self._commit("touch", ext=ext)
 
     def directory(self):

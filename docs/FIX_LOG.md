@@ -637,3 +637,43 @@ with *every* occurrence removed, the check does fire and names the missing modul
 Two things worth taking from that. A perturbation that fails to fire is evidence about the
 *perturbation* until you have checked which, and an unread green is how a test that cannot fail gets
 believed in the first place.
+
+---
+
+## The perturbation runner — how these claims are checked
+
+Every entry above ends with a line like "perturbing X turns the check red". That claim is only worth
+as much as whoever read the output, and at least one such claim in this log was **false** when first
+written: the perturbation was applied to the wrong place, the check passed, and the sentence was
+written without reading the result (see B5).
+
+So the claims are no longer prose. They live in `tests/perturbations.py` as data, and
+`tests/test_perturbations.py` re-derives all of them:
+
+```bash
+python tests/test_perturbations.py            # every claim  (minutes)
+python tests/test_perturbations.py --unit     # the fast ones (seconds)
+python tests/test_perturbations.py A4 B2      # by id
+```
+
+For each: break the code exactly as described, run the suite, and require that the **named** check
+goes red. Then restore, and verify the restore byte-for-byte before moving on — a run that left a
+deliberately broken source behind would be worse than the thing it was proving.
+
+**What it found on its first run, about this log.** Three claims did not hold, and none of them were
+code defects — all three were errors in the claims themselves:
+
+* two perturbations legitimately touch several call sites, and the runner refused them as ambiguous
+  rather than guessing which one was meant;
+* the nudge perturbation broke only the *callee's* message id while the check reads the **caller's**
+  queue, so nothing fired. Done by hand, both had been replaced. The written claim had silently
+  narrowed to something that proves less than it says.
+
+**And one thing it found about itself.** A fourth claim was reported as "the check did not fail",
+which reads as "this check is a tautology". It was not: the perturbation had produced `str + list`
+through operator precedence, the module failed to import, and the suite never ran at all. The runner
+now distinguishes *the check did not fire* from *the suite never ran*, because conflating them turns
+a broken perturbation into a false accusation against a good test.
+
+**What it does not do.** It proves a check can fail; it cannot prove the check tests the right thing.
+Nothing here saves you from a well-perturbed test that asserts something irrelevant.

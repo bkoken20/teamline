@@ -171,8 +171,9 @@ runnable nor a broker. This table is the map.
 ## Running the tests
 
 ```bash
-python tests/test_switchboard.py        # 76 checks, under a second, pure state machine
-python tests/test_switchboard_e2e.py    # 47 checks, ~28 s, a real broker over real sockets
+python tests/test_switchboard.py        # the state machine, pure, seconds
+python tests/test_switchboard_e2e.py    # a real broker over real sockets, ~30 s
+python tests/test_perturbations.py      # proves the other two can FAIL (minutes; --unit for seconds)
 ```
 
 No setup, no fixtures to install, no network. The end-to-end suite starts a broker in-process, drives

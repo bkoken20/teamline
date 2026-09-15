@@ -488,6 +488,42 @@ def main():
     ck("a ping cannot withdraw the HOST's evidence, whichever failure came first",
        dirmap(ss)["beta/both"]["hygiene"] == "GONE", dirmap(ss)["beta/both"])
 
+    # ---- when a call ENDS, its transient signals must stop being deliverable.
+    # Replay already drops ring_delivered and nudge rows belonging to ended calls -- the live path
+    # had no equivalent, so a signal queued while the call was open was still delivered afterwards,
+    # waking a session about a conversation that had finished.
+    SBd, sd, cd = fresh(tempfile.mkdtemp(prefix="sb_"))
+    sd.register("alpha", "caller", now="n", feed=True)
+    sd.register("beta", "callee", now="n", session_id="sess-EC", feed=True)
+    rc = sd.call("alpha", "caller", "beta/callee", "subject", "opening")
+    sd.answer("beta", "callee")
+    for ev in sd.pending_for("alpha/caller"):      # the caller drains what it has so far
+        sd.mark_delivered(ev["id"], "x")
+    cd.t += 6 * M
+    # One tick does both: 5 minutes of silence nudges the parties, and the callee's watcher having
+    # gone quiet past feed_gone_s ends the call as peer_lost. So the nudge is queued and the call it
+    # belongs to is over, in that order -- which is precisely the state replay knows to clean up and
+    # the live path did not.
+    sd.tick()
+    ck("silence nudges the parties, and the call then ends as its peer is lost",
+       sd._calls[rc["call_id"]]["state"] == "ENDED", sd._calls[rc["call_id"]]["state"])
+    left = [e for e in sd.pending_for("alpha/caller") + sd.pending_for("beta/callee")
+            if e.get("call_id") == rc["call_id"] and e["kind"] in ("nudge", "ring_delivered")]
+    ck("...and none of that call's transient signals are still deliverable", not left,
+       [(e["kind"], e["text"][:40]) for e in left])
+    # ...while what was SAID is not transient. A party that had not yet read the last line must
+    # still receive it after the call ends, or ending a call would swallow its tail.
+    SBk, sk, ck2 = fresh(tempfile.mkdtemp(prefix="sb_"))
+    sk.register("alpha", "one", now="n", feed=True)
+    sk.register("alpha", "two", now="n", feed=True)
+    rk = sk.call("alpha", "one", "alpha/two", "s", "o")
+    sk.answer("alpha", "two")
+    sk.say("alpha", "two", "the last thing said")
+    sk.hangup("alpha", "two", "done")
+    ck("a line already said survives the call ending -- only machine signals are dropped",
+       any("the last thing said" in e["text"] for e in sk.pending_for("alpha/one")),
+       [(e["kind"], e["text"][:40]) for e in sk.pending_for("alpha/one")])
+
     # ---- 8. wait buffering
     async def wcase():
         SB3, s3, c3 = fresh(tempfile.mkdtemp(prefix="sb_"))

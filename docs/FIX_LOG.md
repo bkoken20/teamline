@@ -265,3 +265,42 @@ red.
 **A consequence, recorded.** Recovering a lane does not resurrect a call that was ended as
 `peer_lost` while it was down. The caller was already told; the lane comes back for future traffic
 only. That is intended, and stated here so nobody reads it as a second bug.
+
+---
+
+## A5 — a finished call could still wake you
+
+**Severity:** medium. Spurious wake-ups about a conversation that had already ended — which in a
+system whose whole design is "only wake for something real" is a defect of the premise.
+
+**What was wrong.** Replay had always dropped the transient signals of ended calls — a
+`ring_delivered` or a `nudge` belonging to a call that is over is stale, not pending. The **live**
+path had no equivalent. So a signal queued while a call was open stayed deliverable after it ended,
+and the recipient was woken for a finished conversation. Two code paths, one rule written once, and
+only one of them had it.
+
+**How it was found.** The correctness reviewer, noticing that the cleanup existed only in `_replay`.
+
+**The test that should have caught it.** None. Replay's version was tested; the live path's absence
+was not, because no check ever ended a call that had a signal already queued.
+
+The reproduction turned out to be simpler than the one being written. A single `tick()` after six
+minutes does both jobs at once: five minutes of silence nudges the parties, and the callee's watcher
+having gone quiet past `feed_gone_s` ends the call as `peer_lost`. So the nudge is queued and the
+call it belongs to is over, in that order — exactly the state replay cleans up. The first draft of
+the test tried to hang up manually and failed with "has no active call", because `tick()` had
+already ended it. The mechanism wrote a better test than the intention did.
+
+**The fix.** One rule, applied wherever a call becomes ENDED — all three sites — so the live path and
+replay cannot disagree again. Replay keeps its sweep, because a ledger written before this fix can
+still contain such rows, but it now shares the same constant rather than a second copy of the tuple.
+
+**What attacking the fix found.** The risk in a purge is purging too much. `say` lines are **not**
+transient: a party that has not yet read the last thing said to it must still receive it after the
+call ends, or ending a call would swallow its tail. Nothing pinned that, which my own fix made
+newly dangerous, so a check for it was added before attacking rather than after.
+
+Both directions were then perturbed: removing the three live purge calls turns the first check red,
+and adding `say` to the transient list turns the second red. Neither is passing by construction.
+
+**Verified by.** Both suites green on exit codes, four checks between them.

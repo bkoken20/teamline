@@ -107,10 +107,13 @@ class Switchboard:
                     self._rows.append(row)
                     self._apply(row)
         self._replaying = False
-        # transient signals about a call that has since ended are stale, not pending
+        # Transient signals about a call that has since ended are stale, not pending. _apply now
+        # drops these as each call ends, so a ledger written by this version arrives here clean --
+        # but one written before that fix can still carry them, so the sweep stays. Same constant as
+        # the live rule, so the two cannot drift apart.
         ended = {c["call_id"] for c in self._calls.values() if c["state"] == "ENDED"}
         self._outbox = [e for e in self._outbox
-                        if not (e["kind"] in ("ring_delivered", "nudge") and e["call_id"] in ended)]
+                        if not (e["kind"] in self.TRANSIENT and e["call_id"] in ended)]
         t = self.now()
         for e in self._ext.values():          # a socket that is gone is gone
             if e["feed"]:
@@ -140,6 +143,17 @@ class Switchboard:
 
     def on_row(self, cb):
         self._row_listeners.append(cb)
+
+    # The transient signals of a call that has ENDED are stale, not pending: a ring_delivered or a
+    # nudge about a finished conversation would wake a session for nothing. Replay has always
+    # dropped them; the LIVE path did not, so the two disagreed. One rule now, called wherever a
+    # call ends, so they cannot drift apart again. Lines and hangup summaries are NOT transient --
+    # a party that has not yet read the last thing said to it must still receive it.
+    TRANSIENT = ("ring_delivered", "nudge")
+
+    def _drop_transient(self, call_id):
+        self._outbox = [e for e in self._outbox
+                        if not (e["kind"] in self.TRANSIENT and e.get("call_id") == call_id)]
 
     # ------------------------------------------------------------------ apply
     def _apply(self, r):
@@ -218,6 +232,7 @@ class Switchboard:
         elif ev in ("decline", "ring_timeout", "peer_lost"):
             c = self._calls[r["call_id"]]
             c["state"], c["summary"] = "ENDED", f"{ev}: {r.get('reason', '')}"
+            self._drop_transient(c["call_id"])
             other = c["caller"] if r["ext"] == c["callee"] else c["callee"]
             if r["ext"] in self._ext:
                 self._touch(r["ext"], t)
@@ -226,6 +241,7 @@ class Switchboard:
         elif ev == "call_expired":
             c = self._calls[r["call_id"]]
             c["state"], c["summary"] = "ENDED", f"expired: open for more than {CALL_CAP_S // 3600} h"
+            self._drop_transient(c["call_id"])
             for q, suf in ((c["caller"], "-a"), (c["callee"], "-b")):
                 self._emit(q, "call_expired", STEER, r["msg_id"] + suf, r["call_id"],
                            f"{PREFIX} call {r['call_id']} expired (open > {CALL_CAP_S // 3600} h, the orphan cap)")
@@ -252,6 +268,7 @@ class Switchboard:
         elif ev == "hangup":
             c = self._calls[r["call_id"]]
             c["state"], c["summary"] = "ENDED", r["summary"]
+            self._drop_transient(c["call_id"])
             self._touch(r["ext"], t)
             other = c["callee"] if r["ext"] == c["caller"] else c["caller"]
             self._emit(other, "hangup", STEER, r["msg_id"], r["call_id"],

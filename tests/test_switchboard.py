@@ -524,6 +524,31 @@ def main():
        any("the last thing said" in e["text"] for e in sk.pending_for("alpha/one")),
        [(e["kind"], e["text"][:40]) for e in sk.pending_for("alpha/one")])
 
+    # ---- a call that goes quiet AGAIN must nudge again.
+    # The nudge id is "{call_id}-nudge-{n}-{who}" and a `say` resets the counter to 0. So after any
+    # line, the next silent stretch regenerated n=1 -- an id already delivered -- and _emit dropped
+    # it in silence. The parties then sat for a second five minutes with nothing, and only the
+    # 10-minute mark produced a new id. A nudge that silently does not fire is worse than no nudge:
+    # the whole point is to break a stall that neither side has noticed.
+    SBn2, sn2, cn2 = fresh(tempfile.mkdtemp(prefix="sb_"))
+    sn2.register("alpha", "aa", now="n", feed=True)      # no session_id: the feed-silence rule, which
+    sn2.register("alpha", "bb", now="n", feed=True)      # needs one, cannot end the call underneath us
+    rn = sn2.call("alpha", "aa", "alpha/bb", "s", "o")
+    sn2.answer("alpha", "bb")
+    cn2.t += 6 * M
+    sn2.tick()
+    first = [e for e in sn2.pending_for("alpha/aa") if e["kind"] == "nudge"]
+    ck("a silent call nudges the first time", len(first) == 1, first)
+    for ev in sn2.pending_for("alpha/aa") + sn2.pending_for("alpha/bb"):
+        sn2.mark_delivered(ev["id"], "x")
+    sn2.say("alpha", "bb", "still here")                 # the stall breaks, the counter resets
+    for ev in sn2.pending_for("alpha/aa"):
+        sn2.mark_delivered(ev["id"], "x")
+    cn2.t += 6 * M
+    sn2.tick()
+    second = [e for e in sn2.pending_for("alpha/aa") if e["kind"] == "nudge"]
+    ck("...and nudges AGAIN when it goes quiet a second time", len(second) == 1, second)
+
     # ---- 8. wait buffering
     async def wcase():
         SB3, s3, c3 = fresh(tempfile.mkdtemp(prefix="sb_"))

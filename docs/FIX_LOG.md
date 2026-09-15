@@ -304,3 +304,43 @@ Both directions were then perturbed: removing the three live purge calls turns t
 and adding `say` to the transient list turns the second red. Neither is passing by construction.
 
 **Verified by.** Both suites green on exit codes, four checks between them.
+
+---
+
+## A6 — the second nudge of any call never arrived
+
+**Severity:** medium, and squarely against the feature's purpose. A nudge exists to break a stall
+that neither side has noticed; one that silently does not fire is worse than none, because both
+parties believe the mechanism is watching.
+
+**What was wrong.** A nudge's message id was `{call_id}-nudge-{n}-{who}`, and `n` counts rounds
+within the current silent stretch — which a `say` resets to zero. So the sequence
+
+```
+5 min of silence   -> nudge n=1, ids …-nudge-1-callee / -caller, delivered
+someone speaks     -> last_line and the counter both reset
+5 min of silence   -> nudge n=1 again, SAME ids
+```
+
+regenerated ids that were already in the delivered set, and `_emit` dropped them without a word.
+The parties then sat through a second five minutes with nothing; only the ten-minute mark produced
+an `n=2` id that was new enough to get through.
+
+**The test that should have caught it.** None. The suite proved a silent call nudges. It never
+asked what happens when a call goes quiet, recovers, and goes quiet *again* — which is the ordinary
+shape of a long conversation.
+
+**The fix.** The id now carries *which* silent stretch it belongs to, taken from the stretch's start
+(`last_line`) and written into the ledger row as `since`, so replay does not have to reconstruct it.
+Two different stretches produce different ids; two nudges within one stretch still differ by `n`, so
+the deduplication that was wanted still works. Rows written before `since` existed default to zero
+and keep exactly the ids they were delivered under.
+
+**What attacking the fix found.** Nothing that needed changing. The one candidate was a collision:
+two stretches whose start falls in the same whole second would share an id. It cannot happen — a new
+stretch begins at least `NUDGE_S` after the previous one by construction, so their starts are
+minutes apart. Perturbing the id back to its old form turns the check red.
+
+**Note for anyone writing a client.** Message ids here are meaningful, not opaque: the broker
+deduplicates on them. If you generate ids yourself, two different events must never produce the same
+one — this defect is what that costs.

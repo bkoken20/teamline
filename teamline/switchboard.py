@@ -249,10 +249,12 @@ class Switchboard:
             c = self._calls[r["call_id"]]
             c["nudges"] = r["n"]
             mins = int(r["silence_s"] // 60)
-            self._emit(c["callee"], "nudge", STEER, f"{r['call_id']}-nudge-{r['n']}-callee", r["call_id"],
+            # Rows written before `since` existed default to 0 and keep their old ids.
+            stretch = int(r.get("since", 0))
+            self._emit(c["callee"], "nudge", STEER, f"{r['call_id']}-nudge-{stretch}-{r['n']}-callee", r["call_id"],
                        f"{PREFIX} call {r['call_id']}: still there? the caller has heard nothing for {mins} min -- "
                        f"sw_say a short 'still working' line, or sw_hangup")
-            self._emit(c["caller"], "nudge", STEER, f"{r['call_id']}-nudge-{r['n']}-caller", r["call_id"],
+            self._emit(c["caller"], "nudge", STEER, f"{r['call_id']}-nudge-{stretch}-{r['n']}-caller", r["call_id"],
                        f"{PREFIX} call {r['call_id']}: peer silent {mins} min (call still open; sw_hangup if you give up)")
         elif ev == "say":
             c = self._calls[r["call_id"]]
@@ -692,7 +694,12 @@ class Switchboard:
                 silence = t - c["last_line"]
                 n_due = int(silence // NUDGE_S)
                 if n_due > c["nudges"]:
-                    self._commit("nudge", call_id=c["call_id"], n=n_due, silence_s=silence)
+                    # `since` marks WHICH silent stretch this is. Without it the id was
+                    # "{call}-nudge-{n}-{who}" and a `say` resets n to 0, so the next quiet
+                    # stretch regenerated an id already delivered and _emit dropped it in
+                    # silence -- the second nudge of any call simply never arrived.
+                    self._commit("nudge", call_id=c["call_id"], n=n_due, silence_s=silence,
+                                 since=c["last_line"])
                     out["nudged"].append(c["call_id"])
         for x, e in list(self._ext.items()):
             # silence rule for feeds that PING (a watcher, bound to a session id); a Claude Monitor feed

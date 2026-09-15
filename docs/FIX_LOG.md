@@ -874,6 +874,20 @@ and the open ones live in somebody's memory until they do not.
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |
 
+**On the review this log describes, and what became of it.** The adversarial review produced 94
+findings, deduplicated to 43 items in six groups. Fourteen of those are closed above — `A1`–`A9` and
+`B1`–`B5`. The remaining 29 were recorded **outside the repository**, in the working session that ran
+the review, and did not survive a move between machines. Their content is currently unknown.
+
+The five entries numbered with an `-L` suffix are therefore a different thing from the rest, and are
+marked so deliberately: they were re-derived by inspecting the repository rather than taken from that
+list, and whether any of them corresponds to one of the 29 is unknown. They are not that list
+recovered.
+
+This is stated plainly because the alternative is a log that implies a completeness it does not have —
+and because the lesson is the one the section above exists for. The fourteen survived a machine move
+for exactly one reason: they had been written down here as they closed. The twenty-nine did not.
+
 ---
 
 ## The perturbation runner — how these claims are checked

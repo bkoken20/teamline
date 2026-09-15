@@ -713,8 +713,9 @@ tree and, more usefully, the **history** — a push publishes all commits, not t
 
 **🔴 A CORRECTION TO THIS ENTRY, and of the worst kind.** This paragraph originally declared the
 commit history free of the private team names. That was false, and it was false when it was written.
-Two commits on `main` carry them: `11c6492`, the initial commit, in source text, and `2e11fad`, in
-its own commit message. A later cold review found them.
+Two commits carried them: the initial commit, in source text, and the second commit, in its own
+message. A later cold review found them. Their hashes are deliberately not cited here — see the
+resolution below, which removed those commits.
 
 The check that produced the wrong answer was `git log -S`, which is **case-sensitive**, run against
 the lower-case and mixed-case spellings. The names are in the history in CAPITALS, so it returned
@@ -723,12 +724,24 @@ them. Worse, the commit under examination at that moment announces the cause in 
 *case-sensitive rename* having missed the identity — and that title was quoted in the same paragraph
 that concluded the opposite.
 
-What survives from the original claim: `2e11fad` was cleaning the grammatical wreckage of the rename
-rather than removing a name. What does not: anything about the history being free of them.
+What survives from the original claim: the second commit was cleaning the grammatical wreckage of the
+rename rather than removing a name. What does not: anything about the history being free of them.
 
-**This is not fixed here, and it blocks publication.** Clearing it means rewriting history, and the
-author identities with it — the repository owner's decision, not something an entry in a fix log
-should quietly perform. Until then, a push publishes the names.
+**RESOLVED, by rewriting the history on the repository owner's instruction.** Every commit was
+rewritten so that the three names are replaced by the public vocabulary this repository already uses
+for its teams, in blobs and in commit messages alike. Upper case only, which is all that was there; a
+case-insensitive pass would have rewritten ordinary prose that merely matched.
+
+Verified afterwards, not assumed: zero occurrences of any of the three, in either case, across every
+ref; `refs/original` dropped and the objects pruned, so nothing unreachable still holds them; the
+working tree byte-identical before and after, which it must be, since the current tree never contained
+them; the commit count unchanged; both suites green.
+
+**Every commit hash therefore changed.** Hashes cited in this log before the rewrite no longer
+resolve, which is why the paragraph above names the commits by position instead. Deliberately NOT
+rewritten: a private-range address that identifies nobody and was already a stand-in — the real broker
+address, the network name and the machine names were never in the history at all — and the author
+identities, which are the owner's to decide rather than a fix log's.
 
 *(The false phrase is deliberately paraphrased rather than quoted above: a check now asserts that this
 log does not contain that assertion, and quoting it verbatim would trip that check. Same reason the

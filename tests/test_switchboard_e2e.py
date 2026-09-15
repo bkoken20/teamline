@@ -244,6 +244,26 @@ async def run(tmp):
     ck("the package imports nothing it does not declare (no hidden dependencies)",
        not undeclared, {k: sorted(v) for k, v in undeclared.items()})
 
+    # ---- a client that cannot reach the broker must say WHAT it tried ----------------------------
+    # TEAMLINE_PORT moves the broker; it does not move the clients, which default to TEAMLINE_URL.
+    # Get that wrong -- and the shipped compose file sets TEAMLINE_PORT, so people will -- and the
+    # feed client retried forever printing a bare OS error that named neither the address it was
+    # dialling nor the knob that changes it.
+    def _run_dead():
+        return subprocess.run([sys.executable, os.path.join(PKG, "teamline_feed.py"),
+                               "--party", "alpha", "--ext", "dead-probe", "--now", "n",
+                               "--sid", "session-dead-0001", "--url", "http://127.0.0.1:3999"],
+                              capture_output=True, text=True, encoding="utf-8", timeout=8)
+    try:
+        _dead = await asyncio.to_thread(_run_dead)
+        _out = _dead.stdout
+    except subprocess.TimeoutExpired as ex:
+        _out = (ex.stdout or b"").decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
+    ck("an unreachable broker is reported with the URL the client actually tried",
+       "127.0.0.1:3999" in _out, _out[:200])
+    ck("...and with the knob that changes it, so the cause is findable",
+       "TEAMLINE_URL" in _out or "--url" in _out, _out[:200])
+
     # ---- every knob the code reads must be written down -----------------------------------------
     # "How do I configure this" is the first question a stranger has, and the README answered none
     # of it: one variable appeared inline in a command with no explanation and the rest existed only

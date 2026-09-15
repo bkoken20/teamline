@@ -63,9 +63,11 @@ def _busy(e):
 async def hold(url, ping_s=25.0):
     import websockets
     first = True
+    down_seen = False
     while True:
         try:
             async with websockets.connect(url, ping_interval=None, max_size=None) as ws:
+                down_seen = False        # a reconnect ends this outage: diagnose the NEXT one too
                 async def pinger():
                     while True:
                         await asyncio.sleep(ping_s)
@@ -105,7 +107,17 @@ async def hold(url, ping_s=25.0):
                 await asyncio.sleep(BUSY_RETRY_S)
                 continue
             else:
-                print(json.dumps(dict(type="feed_down", error=str(e)[:120], retry_s=2)), flush=True)
+                # The FIRST failure carries the diagnosis; later ones stay terse so a long outage
+                # does not fill the log. Without the address and the knob, an unreachable broker was
+                # a bare OS error repeating forever -- and the commonest cause is a broker moved with
+                # TEAMLINE_PORT while the client still dials the default TEAMLINE_URL.
+                row = dict(type="feed_down", error=str(e)[:120], retry_s=2, url=url.split("/ws?")[0])
+                if not down_seen:
+                    row["hint"] = ("nothing is answering there. Check the broker is up, and that "
+                                   "this client is dialling the right place: set TEAMLINE_URL or "
+                                   "pass --url. TEAMLINE_PORT moves the BROKER, not the client.")
+                down_seen = True
+                print(json.dumps(row), flush=True)
         await asyncio.sleep(2)
 
 

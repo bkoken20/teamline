@@ -566,3 +566,43 @@ when something later breaks.
 
 Perturbing a row out of the table turns the check red, naming the variable that lost its
 documentation.
+
+---
+
+## B4 — moving the port broke the clients, silently
+
+**Severity:** medium, and disproportionately painful. Nothing was broken except the ability to find
+out what was broken.
+
+**What was wrong.** `TEAMLINE_PORT` moves the broker. It does not move the clients, which dial
+`TEAMLINE_URL` and default to port 3790 regardless. The shipped compose file sets `TEAMLINE_PORT`,
+so this is a path people take. What they saw, forever, every two seconds:
+
+```
+{"type": "feed_down", "error": "[WinError 1225] The remote computer refused the network connection", "retry_s": 2}
+```
+
+An OS error, no address, no mention of any setting. The client did not even print where it was
+dialling.
+
+**Design, twice.** The tempting fix is to make the client's default follow `TEAMLINE_PORT`. It was
+rejected: on a machine that runs its own broker, that variable is about the local broker, and
+honouring it would silently point a *remote* client somewhere wrong. That trades a loud confusion
+for a silent misconnection — and the whole of this review has been about silent wrong behaviour.
+Documenting it alone was also rejected: it leaves the person staring at the bare error, and nobody
+reads the configuration section until after they are stuck.
+
+**The fix.** The failure now says what it is. The first failure of an outage carries the address it
+dialled and the knob that changes it; later ones stay terse so a long outage does not fill the log.
+
+**What attacking the fix found.** `down_seen` was never reset, so a client that reconnected and then
+lost the broker again would have diagnosed only the *first* outage in its lifetime and stayed quiet
+about every one after. A reconnect now ends the outage, so each distinct one is diagnosed once.
+
+Perturbing the address out of the row turns the first check red while the second still passes,
+which is the right shape: the two halves — *what* it tried and *how* to change it — are checked
+separately because either could be lost on its own.
+
+**Recorded, not fixed:** `teamline_cli.py` has the same default and prints a plainer failure. It is
+a one-shot command rather than a long-lived holder, so the silence is far less costly there, but the
+asymmetry is real and it is queued rather than folded into this change.

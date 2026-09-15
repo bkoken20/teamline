@@ -110,6 +110,24 @@ client reads the last two.
 | `TEAMLINE_URL` | `http://127.0.0.1:3790` | where the **client** looks for the broker — used by `teamline_cli.py` and `teamline_feed.py`. |
 | `TEAMLINE_PARTY` | `alpha` | which team the **client** claims to be. `--party` overrides it. |
 
+### If you move the port, move it in two places
+
+`TEAMLINE_PORT` moves the **broker**. It does not move the **clients**, which dial `TEAMLINE_URL`
+(`http://127.0.0.1:3790` by default). The shipped `docker-compose.yml` sets `TEAMLINE_PORT`, so this
+is a path people take.
+
+Getting it wrong is survivable but only because the client now says so. The first failure carries
+the address it dialled and the knob that changes it; later ones stay terse:
+
+```json
+{"type": "feed_down", "error": "... refused ...", "retry_s": 2, "url": "ws://127.0.0.1:3999",
+ "hint": "nothing is answering there ... set TEAMLINE_URL or pass --url. TEAMLINE_PORT moves the BROKER, not the client."}
+```
+
+The client deliberately does **not** infer its target from `TEAMLINE_PORT`: on a machine that runs
+its own broker, that would silently point a remote client at the wrong place, and a silent
+misconnection is worse than a loud one.
+
 ### `--sid`, not `--session-id`
 
 Passing `session_id` marks a feed as an **acking** feed: the broker then holds every message until

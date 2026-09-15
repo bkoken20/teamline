@@ -264,11 +264,18 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
     # ---------------------------------------------------------------- MCP tools
     @mcp.tool()
     def sw_register(ext: str, now: str, session_id: str = "", ctx: Context = None) -> dict:
-        """Register THIS session as an extension: ext = short name (team prefix added), now = what you are doing right now, session_id = your HOST_SESSION_ID (beta). A beta ext is reachable only while its watcher holds a feed. Returns the directory."""
+        """Register THIS session as an extension WITHOUT holding a feed: ext = short name (the team prefix is added), now = what you are doing right now, session_id = the id your harness knows this session by, and it is REQUIRED here because nothing else can say where to deliver. The lane is UNREACHABLE until something holds a feed for it, so callers get voicemail rather than a ring. If your session can hold a socket, do that instead -- holding it IS the registration. Returns the directory."""
         def _do():
             t = team_of(ctx)                       # inside the guard: an unknown team must be a NAMED error,
-            return sb.register(t, ext, now=now,    # not an opaque "Error executing tool sw_register"
-                               session_id=session_id or None, feed=(t == "alpha" and not session_id))
+            #                                        not an opaque "Error executing tool sw_register"
+            #
+            # NO TEAM IS PRIVILEGED BY ITS NAME. This once read `feed=(t == "<a literal team name>"
+            # and not session_id)`, which meant renaming your teams changed what this tool did. And
+            # the branch it enabled was wrong anyway: claiming a feed the caller does not hold
+            # produced a lane advertised as LIVE with zero holders -- answerable-looking, and unable
+            # to receive anything. Holding a socket is the registration; this tool never asserts one
+            # on your behalf.
+            return sb.register(t, ext, now=now, session_id=session_id or None, feed=False)
         return guard(_do)
 
     @mcp.tool()

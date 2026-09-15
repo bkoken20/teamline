@@ -458,3 +458,45 @@ stderr write left no dangling import.
 **A limit of the check, stated.** It matches `sw["literal"]` only. A dynamic lookup — `sw[name]` —
 would slip past it. Nothing in the module does that today, and if you add one, this guard will not
 protect you.
+
+---
+
+## B1 — one team was privileged by its name
+
+**Severity:** high against the project's central promise. The README says teams are one environment
+variable; the code granted one literal name a different behaviour.
+
+**What was wrong.** `sw_register`'s no-feed path read `feed=(t == "<a literal team name>" and not
+session_id)`. Both branches were wrong, in opposite directions.
+
+The privileged team got a lane that **claimed a feed nobody held**. Measured: `IDLE`, `LIVE`,
+`holders: 0` — advertised as answerable, able to receive nothing, and callers ringing into silence.
+Every other team got a refusal whose text never mentioned the real reason, so a reader following the
+README and naming their teams anything else saw "must register its host session id" and had no way to
+learn that the name was the problem.
+
+**How it came about, honestly.** This was not in the original system. It was introduced here, during
+the de-identification pass, by a blind search-and-replace that turned a semantic — *the team whose
+harness cannot acknowledge deliveries* — into a literal name. A mechanical rename changed behaviour,
+which is exactly the failure mode such a pass is supposed not to have.
+
+**The decision.** Three options were weighed: delete the special case; make it configurable with a
+second environment variable; or document that the first team listed is the privileged one. The last
+two keep the phantom lane and only change who receives it — the team-name coupling is just how the
+defect is *reached*, not what it is. Deleted.
+
+**The fix.** `sw_register` never asserts a feed on the caller's behalf. Holding a socket is the
+registration; registering without one requires a session id, for every team alike, because nothing
+else can say where to deliver. Such a lane reads UNREACHABLE until something holds a feed for it, so
+callers get voicemail rather than a ring into nowhere.
+
+**What attacking the fix found.** The fix falsified the tool's own docstring, which still implied
+that only one team needed a session id — and that docstring is what an MCP client shows the agent
+before it calls anything. Leaving it would have replaced a wrong behaviour with a wrong instruction.
+Rewritten to say what the tool now does.
+
+Perturbing the privilege back turns two of the three checks red.
+
+**Verified by.** Three checks: that every team is treated identically, that a registration holding no
+feed is refused rather than claiming one, and that no lane anywhere reads LIVE with zero holders —
+the last being the shape of the phantom, stated as an invariant rather than a special case.

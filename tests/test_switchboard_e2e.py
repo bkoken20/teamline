@@ -243,6 +243,25 @@ async def run(tmp):
     ck("the package imports nothing it does not declare (no hidden dependencies)",
        not undeclared, {k: sorted(v) for k, v in undeclared.items()})
 
+    # ---- sw_register must not privilege a team by NAME -------------------------------------------
+    # The no-feed path read `t == "alpha"`, a literal team name, so renaming teams changed
+    # behaviour while the README promised teams are one environment variable. Both branches were
+    # wrong: the privileged team got a lane claiming a feed nobody holds -- LIVE with zero holders,
+    # advertised as answerable and able to receive nothing -- and every other team got an error
+    # that never mentioned the real reason.
+    reg = {}
+    for t in ("alpha", "gamma"):
+        reg[t] = await call(t, "sw_register", ext="nofeed-probe", now="n")
+    ck("sw_register treats every team identically -- no team is privileged by its name",
+       (("error" in reg["alpha"]) == ("error" in reg["gamma"])), reg)
+    ck("...and a registration that holds no feed is refused rather than claiming one",
+       all("error" in r for r in reg.values()), reg)
+    d_probe = {e["ext"]: e for e in (await call("alpha", "sw_directory"))["extensions"]}
+    ck("...so no phantom lane appears: nothing is LIVE with zero holders",
+       not [e for e in d_probe.values() if e["hygiene"] == "LIVE" and e["holders"] == 0],
+       [(e["ext"], e["hygiene"], e["holders"]) for e in d_probe.values()
+        if e["hygiene"] == "LIVE" and e["holders"] == 0])
+
     # THE WIRING AND ITS CONSUMER MUST AGREE. teamline_broker reaches into the dict that
     # switchboard_broker.wire() returns. A key that no longer exists there is invisible until the
     # line runs -- and one such line sat in a `try/except Exception` that would have swallowed the

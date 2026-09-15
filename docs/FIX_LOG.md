@@ -861,6 +861,21 @@ about whether the check executes. A check is only verified by running it where i
 
 ---
 
+## Open findings — known, and NOT fixed
+
+Everything above is closed. This section exists because the log had no place to put a finding that
+was *not*, which is how a list of them gets lost: the closed ones are written down as they close,
+and the open ones live in somebody's memory until they do not.
+
+| finding | state |
+|---|---|
+| No `.gitattributes`. The index is pure LF today across all 20 tracked files, but a contributor whose git normalises differently can commit CRLF and produce a diff that touches every line. Latent, not present. | open |
+| 153 of the 178 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
+| No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |
+
+---
+
 ## The perturbation runner — how these claims are checked
 
 Every entry above ends with a line like "perturbing X turns the check red". That claim is only worth

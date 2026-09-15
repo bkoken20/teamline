@@ -606,3 +606,28 @@ separately because either could be lost on its own.
 **Recorded, not fixed:** `teamline_cli.py` has the same default and prints a plainer failure. It is
 a one-shot command rather than a long-lived holder, so the silence is far less costly there, but the
 asymmetry is real and it is queued rather than folded into this change.
+
+---
+
+## B5 — nothing told a reader which file to run
+
+**Severity:** medium, and the first thing a newcomer hits after the quickstart.
+
+**What was wrong.** Seven files, three of them with close names, and the README described none of
+them. Worse, the names actively mislead: `switchboard_broker.py` is neither runnable nor a broker —
+it is the wiring between the state machine and the transport — while the file you actually run is
+`teamline_broker.py`. A reader opening the repository had no way to know that except by reading all
+three.
+
+**Why the names were not simply fixed.** Renaming three modules touches every import and every test,
+for readability that a table buys just as well. The names are a wart; a map is cheaper than surgery,
+and the map says out loud that the names are unhelpful rather than pretending otherwise.
+
+**The fix.** A table naming every file and what it is, with `switchboard.py` marked as the one to
+read first and `teamline_broker.py` as the one to run.
+
+**The check.** Every `.py` in the package must be mentioned in the README. It reported exactly the
+one that was missing, and it fails for any module added later without a line in the table.
+
+Perturbing the table entry to a description that does not name the file turns it red — which is the
+point: the check wants the *filename* present, not a paraphrase a reader cannot grep for.

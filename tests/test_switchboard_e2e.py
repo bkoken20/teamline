@@ -25,6 +25,10 @@ FAILS = []
 PORT = 3792
 
 
+def _readme0():
+    return io.open(os.path.join(os.path.dirname(PKG), "README.md"), encoding="utf-8").read()
+
+
 def SBteams():
     import switchboard as SB
     return SB.TEAMS
@@ -243,6 +247,13 @@ async def run(tmp):
                     undeclared.setdefault(_mod, set()).add(_name)
     ck("the package imports nothing it does not declare (no hidden dependencies)",
        not undeclared, {k: sorted(v) for k, v in undeclared.items()})
+
+    # ---- a reader must be able to tell which file is which ---------------------------------------
+    # Three modules, two prefixes, and the one whose name reads like the server -- switchboard_broker
+    # -- is neither runnable nor a broker. Nothing told a newcomer which file to run.
+    _mods = [f for f in sorted(os.listdir(PKG)) if f.endswith(".py")]
+    ck("every module in the package is described in the README",
+       all(m in _readme0() for m in _mods), [m for m in _mods if m not in _readme0()])
 
     # ---- a client that cannot reach the broker must say WHAT it tried ----------------------------
     # TEAMLINE_PORT moves the broker; it does not move the clients, which default to TEAMLINE_URL.

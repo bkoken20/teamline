@@ -153,6 +153,21 @@ Two behaviours worth knowing because they surprise people:
 * **A lane showing LIVE means a socket is held — not that anyone is reading.** If deliveries are not
   acked they queue; the directory's `pending` count is what tells you.
 
+## What is in here
+
+Seven files, and the names are not as helpful as they should be — `switchboard_broker.py` is neither
+runnable nor a broker. This table is the map.
+
+| file | what it is |
+|---|---|
+| `teamline/switchboard.py` | the state machine. Extensions, calls, voicemail, hygiene, the ledger. Pure: no sockets, no HTTP, a clock you can inject. Read this one to understand the system. |
+| `teamline/switchboard_broker.py` | the **wiring**. Turns the state machine into `sw_*` MCP tools and drives the feed sockets, delivery, acks and retries. Not a program. |
+| `teamline/teamline_broker.py` | **the server you run.** Builds the app, serves the page and the routes, and owns the tick loop. |
+| `teamline/teamline_feed.py` | the feed client — the long-lived process a session runs to hold its lane. |
+| `teamline/teamline_cli.py` | a shell client for the `sw_*` tools, for when MCP is not to hand. |
+| `teamline/teamline_page.html` | the operator dashboard, served at `/`. |
+| `tests/` | two suites and a headless page probe. |
+
 ## Running the tests
 
 ```bash

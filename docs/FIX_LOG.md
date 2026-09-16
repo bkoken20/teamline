@@ -138,6 +138,12 @@ an identity when the first socket is merely gone. The new check asserts both hal
 refused, and the rightful holder still gets back in with its own `sid`. The second half matters as
 much as the first, and is why the offending clause could not simply be deleted.
 
+⚠ **Corrected by R-2.** That new check was GREEN while the guard did not hold. Its stranger never
+read `/directory`, where both identities this guard accepts were published in full — so the check
+modelled an attacker weaker than the one named in the severity line two paragraphs above, and the
+fix below was defeated by the first URL the README hands out. The guard itself is sound; what was
+wrong is everything that published the thing it checks. See R-2.
+
 **The fix, in two parts.**
 
 *Identity on re-attach.* A re-attach is allowed when the caller proves the identity the lane was
@@ -209,6 +215,10 @@ a credential the suite forces the document to be rewritten with it. Two checks n
 `operator` is not a configured team, and that the observer's snapshot carries raw ledger rows with
 message text. Both were perturbed — adding `operator` to the team list, and emptying the snapshot's
 rows — and each fires.
+
+⚠ **Narrowed by R-2.** "Raw" is no longer exact: `sid` and `session_id` are stripped from those rows
+on the way to the observer, because they are what the re-attach guard checks. Everything else — the
+message text, the call subjects and openings this section exists to warn about — is still there.
 
 **The fix.** The security section now states the operator surface separately, lists exactly what it
 exposes, and says plainly that there is no switch to turn it off.
@@ -939,6 +949,68 @@ be established from the working tree.
 
 ---
 
+## R-2 — the guard A2 added was defeated by the directory that published its credential
+
+**Severity:** high. A2 is this log's highest-severity code entry, and the protection it claims did not
+hold against the attacker population its own entry names.
+
+**What was wrong.** A2 closed a takeover by requiring a re-attaching client to PROVE the identity the
+lane was registered with — its `sid` or its `session_id`. Every directory row carried both, and
+`GET /directory` takes no credential; it is the first URL this README hands out after the start
+command. The proof the guard demanded was published beside the name it protected.
+
+Four doors, found in this order:
+
+| door | what it hands a caller who presents nothing |
+|---|---|
+| `GET /directory` | the row, with `sid` and `session_id` in it |
+| `ws?party=<team>&ext=<name>` | the same rows — every feed is sent the directory on connect |
+| `ws?party=operator` | the last 200 **ledger** rows, and a `register` row carries the `sid` in full |
+| the refusal text | `"<ext> is LIVE (session <id>, seen 3s ago)"` — ask for a name that is taken, be told who holds it |
+
+The first three are one mechanism, `_entry`, the single row builder. The fourth is not, and it was
+found by walking the fix rather than by the review: it turns a *refusal* into the credential, so a
+probe that is turned away leaves with exactly what it needs to come back and succeed.
+
+**How it was found.** A second adversarial review, reading this repository. Reproduced by attack
+before anything was changed: the owner registers with a `sid`, its socket drops, the thief reads
+`/directory` with no credential, copies the `sid`, connects with it, and the lane answers
+`now='not-mine' holders=1`.
+
+**The test that should have caught it.** One existed and it was green — *"a client with no matching
+identity cannot take over a lane whose socket dropped"*, shipped with A2 itself. It passed because
+its thief never read the directory: it presented no identity because it had gone looking for none.
+**A check that models an attacker weaker than the one its own entry names is not evidence about that
+attacker.** That thief now reconnoitres first. It reads all four doors, harvests whatever identity
+they offer *by the field names `PROTOCOL.md` documents* — so it knows no value in advance — and
+attacks with the loot. Against the unfixed code it takes the lane; against the fixed code it finds
+nothing to carry and is refused, which is the original check unchanged.
+
+**The fix, and the alternative that lost.** `_entry` publishes neither identity; the observer path
+redacts both from ledger rows on the way out; the refusal gives the age and not the session.
+
+The alternative was to publish `bound` — a boolean saying whether a lane holds an identity at all,
+keeping the row informative without publishing the secret. It lost on a count: **nothing reads either
+field off a row.** Not the operator page, the headless page probe, the CLI, or the feed client; the
+only reader was one assertion in the suite, which now takes the binding from the ledger. A field with
+no reader is not worth an API — and `bound=false` would have named, in one unauthenticated GET and
+with **zero ledger entries**, exactly which lanes are anonymous and therefore seizable. Leaving it
+out makes an attacker earn that list by connecting, which the ledger records.
+
+**What this deliberately does NOT fix.** The ledger still records both identities. It is the audit
+trail, and a record that omits who held a lane cannot answer the question it exists for. The
+redaction is on the way OUT; the file on disk is unchanged, so anyone who can read the broker's
+working directory can still read every identity — as they can read every message text, which is what
+the trusted-network model in the README already says.
+
+**The check.** *"no unauthenticated door hands out the identity the re-attach guard checks"* reads all
+four doors and fails if any of them carries it, under any key or none: it searches the payload rather
+than the fields this fix happens to know about, so a fifth door added later is caught by what it
+emits and not by whoever remembered to redact it. Perturbing any one of the three changed statements
+turns it red — claims `R-2-row`, `R-2-observer` and `R-2-refusal`.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -948,7 +1020,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 153 of the 178 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 154 of the 180 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |
 
@@ -961,6 +1033,12 @@ The five entries numbered with an `-L` suffix are therefore a different thing fr
 marked so deliberately: they were re-derived by inspecting the repository rather than taken from that
 list, and whether any of them corresponds to one of the 29 is unknown. They are not that list
 recovered.
+
+A **second** adversarial review was then run against this repository — not against the first review's
+list, which was gone — and produced 32 findings of its own, each with a file and a line. Entries
+numbered `R-n` come from it, and this time the list is in version control rather than in a session.
+Eight of its findings dispute entries this log already calls closed; `R-2` above is the first of
+those to be worked, and the entry it disputes now says so where a reader meets it.
 
 This is stated plainly because the alternative is a log that implies a completeness it does not have —
 and because the lesson is the one the section above exists for. The fourteen survived a machine move

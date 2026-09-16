@@ -46,7 +46,7 @@ PERTURBATIONS = [
          why="makes `operator` a configured team, which would change what the security section must say"),
 
     dict(id="A3-rows", suite="e2e", file="teamline/teamline_broker.py",
-         find='rows=sb.ledger_rows()[-200:]', repl='rows=[]',
+         find='rows=[public(r) for r in sb.ledger_rows()[-200:]]', repl='rows=[]',
          must_fail="its snapshot carries raw ledger rows",
          why="empties the snapshot, so the exposure the security section describes would be gone"),
 
@@ -207,4 +207,26 @@ PERTURBATIONS = [
              "lane-name pass because it is a PHRASE, not an identifier -- and it read, to a stranger, "
              "as a reference to infrastructure they were assumed to know and which is defined nowhere "
              "in this repository"),
+
+    dict(id="R-2-row", suite="e2e", file="teamline/switchboard.py",
+         find='call_id=(self._call_of(e["ext"]) or {}).get("call_id"),',
+         repl='session_id=e["session_id"], sid=e.get("sid"),\n                    '
+              'call_id=(self._call_of(e["ext"]) or {}).get("call_id"),',
+         must_fail="no unauthenticated door hands out the identity the re-attach guard checks",
+         why="puts both identities back into every published directory row, which is where a reader "
+             "of the first URL the README hands out found the proof the re-attach guard demands"),
+
+    dict(id="R-2-observer", suite="e2e", file="teamline/teamline_broker.py",
+         find='rows=[public(r) for r in sb.ledger_rows()[-200:]]',
+         repl='rows=sb.ledger_rows()[-200:]',
+         must_fail="no unauthenticated door hands out the identity the re-attach guard checks",
+         why="serves raw ledger rows to the operator socket again -- it is accepted with no "
+             "credential, and a `register` row carries the sid in full"),
+
+    dict(id="R-2-refusal", suite="e2e", file="teamline/switchboard.py",
+         find="is LIVE (seen {int(self.now() - old['last_seen'])}s ago)",
+         repl="is LIVE (session {old['session_id']}, seen {int(self.now() - old['last_seen'])}s ago)",
+         must_fail="no unauthenticated door hands out the identity the re-attach guard checks",
+         why="makes the refusal name the session holding the lane. Found by walking the fix, not by "
+             "the review: probe a taken name, be turned away, read the credential out of the refusal"),
 ]

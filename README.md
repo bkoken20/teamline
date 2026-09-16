@@ -51,7 +51,10 @@ stating separately. `operator` is not a configured team, so `TEAMLINE_TEAMS` doe
 
 * `GET /` serves the dashboard;
 * `ws://…/ws?party=operator` is accepted with no credential and streams a snapshot of the last 200
-  ledger rows — message text, call subjects and openings included — and then every new row live;
+  ledger rows — message text, call subjects and openings included — and then every new row live. The
+  one thing removed on the way out is the `sid`/`session_id` a lane registered with, because that is
+  what the re-attach guard checks and publishing it defeated the guard (see `R-2` in the fix log);
+  the ledger file itself still records both;
 * `POST /operator/say` injects a line into any open call, attributed to the operator.
 
 So reaching the port is enough to read everything that passes through the broker and to speak into

@@ -422,7 +422,11 @@ class Switchboard:
         t = self.now()
         return dict(ext=e["ext"], team=e["team"], state=self._state(e), hygiene=self._hygiene(e, t), now=now,
                     now_age_s=age, now_source=src, busy_kind=bk, busy_reason=br, last_seen_age_s=t - e["last_seen"],
-                    session_id=e["session_id"], sid=e.get("sid"), call_id=(self._call_of(e["ext"]) or {}).get("call_id"),
+                    # NO `session_id`, NO `sid`. A directory row is public -- /directory takes no
+                    # credential -- and those two are exactly what the re-attach guard checks, so
+                    # publishing them handed a reader of the first URL in the README the proof it
+                    # demands. Nothing outside this class ever read them off a row.
+                    call_id=(self._call_of(e["ext"]) or {}).get("call_id"),
                     voicemail_held=sum(1 for v in self._held if v["to"] == e["ext"]),
                     pending=sum(1 for x in self._outbox if x["to"] == e["ext"]))
 
@@ -447,7 +451,11 @@ class Switchboard:
         if old:
             h = self._hygiene(old)
             if h == "LIVE":
-                raise SwitchError(f"{full} is LIVE (session {old['session_id']}, seen {int(self.now() - old['last_seen'])}s ago); "
+                # The refusal does NOT name the session holding the lane. Anyone may reach this
+                # message by asking for a name that is taken, and the holder's session id is half
+                # of what the re-attach guard accepts -- so naming it here turned a refusal into
+                # the credential. The age is what a caller needs; the identity is not.
+                raise SwitchError(f"{full} is LIVE (seen {int(self.now() - old['last_seen'])}s ago); "
                                   f"pick another name or wait for it to go STALE")
             self._commit("retired", ext=full, reason="replaced", by=full, was=h)
         self._commit("register", ext=full, team=team, name=name, session_id=session_id, feed=bool(feed),

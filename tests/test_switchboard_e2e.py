@@ -133,7 +133,7 @@ async def run(tmp):
     def mk(ext, team, holders=1):
         return dict(ext=ext, team=team, state="IDLE", hygiene="LIVE", now="n", now_age_s=1,
                     now_source="model", busy_kind=None, busy_reason=None, last_seen_age_s=1,
-                    session_id=None, voicemail_held=0, pending=0, holders=holders)
+                    voicemail_held=0, pending=0, holders=holders)   # shaped like a real row: no identity
     probe_dir = os.path.join(tmp, "probe_directory.json")
     probe_page = os.path.join(tmp, "probe_page.html")
     with open(probe_page, "w", encoding="utf-8") as fh:
@@ -514,7 +514,13 @@ async def run(tmp):
        set(d) == {"beta/deep", "beta/ruler", "alpha/writer", "alpha/review"} and all("now_age_s" in e for e in d.values()), sorted(d))
     ck("keepalive running=true shows BUSY(turn), running=false IDLE (liveness from the watcher, no host poll)",
        d["beta/deep"]["state"] == "BUSY" and d["beta/deep"]["busy_kind"] == "turn" and d["beta/ruler"]["state"] == "IDLE", d)
-    ck("a beta ext bound to a session id and a feed is LIVE", d["beta/deep"]["hygiene"] == "LIVE" and d["beta/deep"]["session_id"] == "sess-A", d["beta/deep"])
+    ledger = lambda: [json.loads(l) for l in open(os.path.join(tmp, "switchboard.jsonl"), encoding="utf-8") if l.strip()]
+    # The binding is read from the LEDGER, not from the row: a directory row deliberately no longer
+    # carries `session_id`, because it is the value the re-attach guard checks and /directory is public.
+    ck("a beta ext bound to a session id and a feed is LIVE", d["beta/deep"]["hygiene"] == "LIVE"
+       and any(e["event"] == "register" and e["ext"] == "beta/deep" and e.get("session_id") == "sess-A"
+               for e in ledger()),
+       (d["beta/deep"], [e for e in ledger() if e["event"] == "register" and e["ext"] == "beta/deep"]))
 
     # ---- calls: delivery by the watcher, ack marks delivered --------------------------------------
     r1 = await call("alpha", "sw_call", ext="writer", peer="beta/deep", subject="depth", opening="numbers?")
@@ -524,7 +530,6 @@ async def run(tmp):
     ck("each ring reached ITS watcher feed: deep as steer (running), ruler as queue (idle)",
        any(x["kind"] == "ring" and "depth" in x["text"] and x["mode"] == "steer" for x in delivered["deep"])
        and any(x["kind"] == "ring" and "ruler" in x["text"] and x["mode"] == "queue" for x in delivered["ruler"]), delivered)
-    ledger = lambda: [json.loads(l) for l in open(os.path.join(tmp, "switchboard.jsonl"), encoding="utf-8") if l.strip()]
     ck("the watcher's ack marks the ring delivered WITH its session id (host-accepted once)",
        any(e["event"] == "delivered" and e["session_id"] == "sess-A" for e in ledger()), [e for e in ledger() if e["event"] == "delivered"][-2:])
     ck("the caller got the machine ring_delivered signal after the ack",
@@ -865,19 +870,67 @@ async def run(tmp):
     # session_id. Both are public in /directory. Worse than a takeover -- the row kept the OWNER's
     # sid while delivering to the stranger, so it still read as the owner's lane.
     own = await websockets.connect(
-        "ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=mine&sid=session-OWNER-0001" % PORT)
+        "ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=mine&sid=session-OWNER-0001"
+        "&session_id=sess-OWNER-HOST" % PORT)      # holds BOTH identities: the guard accepts either
     await asyncio.wait_for(anext(aiter(own)), 2)
     await own.close()
     await asyncio.sleep(0.3)                       # inside feed_gone_s: the lane is still LIVE
+
+    # THE THIEF RECONNOITRES FIRST, and that is the whole of it: the guard checks `sid` or
+    # `session_id`, and the broker handed both out through three doors that ask for no credential.
+    # The thief this check shipped with skipped that step, so it stayed green while the guard did
+    # not hold. `loot_of` gathers the way an attacker gathers -- by the field names PROTOCOL.md
+    # publishes, on any row naming the lane -- so it knows no value in advance.
+    def loot_of(blob):
+        out = []
+
+        def walk(x):
+            if isinstance(x, dict):
+                if x.get("ext") == "alpha/owned":
+                    out.extend([(k, x[k]) for k in ("sid", "session_id") if isinstance(x.get(k), str) and x[k]])
+                for v in x.values():
+                    walk(v)
+            elif isinstance(x, list):
+                for v in x:
+                    walk(v)
+            elif isinstance(x, str):               # prose counts: a refusal that NAMES the session
+                out.extend([("session_id", m) for m in _re0.findall(r"session ([A-Za-z0-9_-]{4,})", x)])
+        walk(blob)
+        return out
+
+    async with httpx2.AsyncClient() as hc:
+        doors = {"GET /directory": (await hc.get("http://127.0.0.1:%d/directory" % PORT)).json()}
+    opw = await websockets.connect("ws://127.0.0.1:%d/ws?party=operator" % PORT)
+    doors["ws party=operator"] = json.loads(await asyncio.wait_for(anext(aiter(opw)), 3))
+    await opw.close()
+    spy = await websockets.connect("ws://127.0.0.1:%d/ws?party=beta&ext=spy&now=watching" % PORT)
+    doors["ws registration frame"] = json.loads(await asyncio.wait_for(anext(aiter(spy)), 3))
+    await spy.close()
+    # The REFUSAL is a door too, and the code walk is what found it: a probe turned away from a LIVE
+    # lane was told which session holds it, which is the other half of what the guard accepts. Probe,
+    # be refused, read the credential out of the refusal, come back with it.
+    probe = await websockets.connect("ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=probing" % PORT)
+    doors["ws refusal text"] = json.loads(await asyncio.wait_for(anext(aiter(probe)), 3))
+    try:
+        await probe.close()
+    except Exception:
+        pass
+    ck("no unauthenticated door hands out the identity the re-attach guard checks",
+       not any(loot_of(v) for v in doors.values()),
+       {k: loot_of(v) for k, v in doors.items() if loot_of(v)})
+
+    loot = [p for v in doors.values() for p in loot_of(v)]
     seized = None
     try:
-        thief = await websockets.connect("ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=not-mine" % PORT)
+        thief = await websockets.connect(
+            "ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=not-mine" % PORT
+            + ("&%s=%s" % loot[0] if loot else ""))
         seized = json.loads(await asyncio.wait_for(anext(aiter(thief)), 3))
         await thief.close()
     except Exception as ex:
         seized = {"refused": str(ex)[:80]}
     ck("a client with no matching identity cannot take over a lane whose socket dropped",
-       seized.get("type") != "registered", seized)
+       seized.get("type") != "registered", (seized, loot[:1]))
     # ...and the rightful owner must still get back in, which is why the whole clause cannot simply
     # be deleted: a lane that loses its line cannot be rung to be told about it.
     back = await websockets.connect(

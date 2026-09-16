@@ -60,8 +60,19 @@ def build(root=ROOT, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=90, state_
     sb = sw["sb"]
 
     # ---------------------------------------------------------------- observers (operator page)
+    # The ledger RECORDS who registered, and must -- it is the audit trail. But this socket is
+    # accepted with no credential (`party=operator`), so serving rows verbatim republished the very
+    # identity the directory had just stopped publishing: a `register` row carries `sid` in full.
+    # Redact on the way OUT; the file on disk keeps both. Both observer paths go through `public`,
+    # and the e2e check reads all four public doors rather than these two call sites, so a further
+    # one added later is caught by what it emits, not by whoever remembered to call this.
+    SECRET_FIELDS = ("sid", "session_id")
+
+    def public(row):
+        return {k: v for k, v in row.items() if k not in SECRET_FIELDS}
+
     def snapshot():
-        return dict(type="snapshot", rows=sb.ledger_rows()[-200:], **sw["snapshot_extra"]())
+        return dict(type="snapshot", rows=[public(r) for r in sb.ledger_rows()[-200:]], **sw["snapshot_extra"]())
 
     async def _send_raw(ws, msg):
         try:
@@ -73,7 +84,7 @@ def build(root=ROOT, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=90, state_
         loop = loop_ref.get("loop")
         if not loop or not observers:
             return
-        msg = json.dumps(dict(type="row", row=row, **sw["snapshot_extra"]()), ensure_ascii=False)
+        msg = json.dumps(dict(type="row", row=public(row), **sw["snapshot_extra"]()), ensure_ascii=False)
         for ws in list(observers):
             loop.create_task(_send_raw(ws, msg))
     sb.on_row(broadcast_row)

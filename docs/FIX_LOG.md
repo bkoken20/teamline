@@ -175,6 +175,12 @@ a host saying "this session is not running" is **evidence**, while a quiet socke
 feed leaves `feed_up` false whereas a host-reported absence does not. The window now applies to
 silence alone.
 
+⚠ **Corrected by R-18.** "The two are distinguishable because a dropped feed leaves `feed_up` false"
+is exactly why this was wrong: once **both** have happened, `feed_up` is false and the silence branch
+takes over — and it read `gone_since` without asking why it was set. A lane the host had reported
+absent read LIVE again the moment its socket dropped, for the whole window. The sentence above is
+true now; it described one ordering and not the other.
+
 Both halves were then perturbed independently, and each turns the seizure check red on its own — the
 identity clause because the stranger re-attaches directly, the window because the stranger
 re-registers. Neither is redundant.
@@ -1651,6 +1657,49 @@ coming home.
 
 ---
 
+## R-18 — a second failure turned the host's evidence back into silence
+
+**Severity:** low in reach, and worth the entry for what it says about the rule it broke.
+
+**What was wrong.** `A4` drew the distinction this rests on: a host reporting a session absent is
+**evidence** and is GONE at once; a quiet socket is only **silence** and gets a grace period. Its
+entry then explained why the two could be told apart — *"a dropped feed leaves `feed_up` false whereas
+a host-reported absence does not"* — which is precisely the sentence that was wrong. Once **both**
+have happened, `feed_up` is false, the silence branch takes over, and it read `gone_since` without
+asking why it had been set:
+
+```
+  registered, holding a feed          LIVE
+  the host reports it absent          GONE     gone_reason='host'
+  10 s later its socket drops         LIVE     gone_reason='host' -- still the host's
+  at drop + 30 s                      LIVE
+  at drop + 89 s                      GONE
+```
+
+Not cosmetic: a lane reading LIVE is a lane whose name cannot be reclaimed, and one whose holder the
+host has already said is not there.
+
+**The test that should have caught it.** It exists, it passes, and it tests the other ordering: *"a
+ping cannot withdraw the HOST's evidence, whichever failure came first"* — which walks a frame
+**arriving**. The other way a lane's state is recomputed is its socket **going down**, and nothing
+tested that. "Whichever failure came first" was true of the failure the check had in mind.
+
+**The fix.** Two lines: in the silence branch, say GONE at once when the lane was marked gone by the
+host. Evidence does not become silence because a second thing failed afterwards.
+
+**The walk ran three orderings, because a branch added to a state function is exactly the change that
+fixes one and breaks another.** Host-then-drop is GONE throughout. Host-then-ping is still GONE, which
+is `A4`'s case. And a **plain** drop still reads LIVE at 1 s, 30 s and 89 s and GONE at 95 s — that
+one was the risk worth naming: if the new branch were reachable by ordinary silence it would collapse
+the grace period `A2` added, and a lane that goes GONE at once is a lane anyone may re-attach to,
+which is the takeover `A2` exists to prevent. A fix for a flicker would have opened the hole the
+neighbouring entry closed.
+
+**The check.** `R-18` removes the two lines and the new check goes red, while `A4`'s own two claims go
+on firing — the ordering it guards was never the problem.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1660,7 +1709,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 158 of the 199 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 159 of the 200 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

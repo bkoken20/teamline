@@ -490,6 +490,22 @@ def main():
     ck("a ping cannot withdraw the HOST's evidence, whichever failure came first",
        dirmap(ss)["beta/both"]["hygiene"] == "GONE", dirmap(ss)["beta/both"])
 
+    # ...and NEITHER CAN A DROP. The check above covers a frame arriving. The other way a lane's
+    # state is recomputed is its socket going down, and that branch waits the silence window out
+    # using `gone_since` without asking why it was set -- so a lane the host had already reported
+    # absent read LIVE again for the whole window. Silence is not evidence; evidence does not become
+    # silence because a second thing failed afterwards.
+    SBd, sd, cd = fresh(tempfile.mkdtemp(prefix="sb_"))
+    sd.register("beta", "watched", now="n", session_id="host-W", feed=True, sid="s-w")
+    sd.set_running("beta", {})                     # 1. the host reports the session absent
+    was = sd.entry("beta", "watched")["hygiene"]
+    cd.t += 10
+    sd.feed("beta", "watched", False)              # 2. and THEN the socket drops
+    cd.t += 30                                     # 3. well inside the silence window
+    ck("a socket drop cannot withdraw the HOST's evidence either",
+       was == "GONE" and sd.entry("beta", "watched")["hygiene"] == "GONE",
+       (was, sd.entry("beta", "watched")["hygiene"], sd._ext["beta/watched"].get("gone_reason")))
+
     # ---- when a call ENDS, its transient signals must stop being deliverable.
     # Replay already drops ring_delivered and nudge rows belonging to ended calls -- the live path
     # had no equivalent, so a signal queued while the call was open was still delivered afterwards,

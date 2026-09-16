@@ -210,6 +210,14 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-18", suite="unit", file="teamline/switchboard.py",
+         find='            if e.get("gone_reason") == "host":\n                return "GONE"\n',
+         repl='',
+         must_fail="a socket drop cannot withdraw the HOST's evidence either",
+         why="restores the branch that waited out the silence window on a lane the HOST had already "
+             "reported absent -- so a second failure, the socket dropping, sent it back to LIVE for "
+             "the whole window. A4 drew this distinction and guarded only the ping that arrives"),
+
     dict(id="R-8-record", suite="unit", file="teamline/switchboard.py",
          find='was=h, same_identity=_same)',
          repl='was=h)',

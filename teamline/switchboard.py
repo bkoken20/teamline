@@ -367,7 +367,14 @@ class Switchboard:
         # re-attaches; past it, the lane is genuinely presumed dead and anyone may reclaim it, which
         # is how a session recovers its name after a restart gives it a new session id.
         if e["feed"] and not e["feed_up"]:
-            # SILENCE, not evidence. Wait the window out before presuming death.
+            # SILENCE, not evidence. Wait the window out before presuming death -- UNLESS the lane was
+            # already marked gone by the HOST, in which case there is nothing to wait for and never
+            # was. This branch used to read `gone_since` without asking why it was set, so a lane the
+            # host had reported absent flickered back to LIVE the moment its socket dropped, for the
+            # whole window. The distinction A4 drew is the one that matters here too: a second failure
+            # arriving afterwards does not turn evidence into silence.
+            if e.get("gone_reason") == "host":
+                return "GONE"
             since = e["gone_since"] if e["gone_since"] is not None else t
             if t - since >= self.feed_gone_s:
                 return "GONE"

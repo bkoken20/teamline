@@ -1490,6 +1490,48 @@ Third time today that a reproduction, not a finding, was the thing at fault.
 
 ---
 
+## R-26 — the HTTP table was missing a route, and demonstrated a knob nothing can set
+
+**Severity:** low, and the missing route is the one a reader would most want in that table.
+
+**What was wrong.** §7 listed six routes; the broker serves seven. The one absent was
+`POST /operator/say` — **a write, reachable with no credential**, which injects a line into any open
+call. Everything else in that table is a read.
+
+And §5 showed `Switchboard(..., cap_into={"beta": 6})` the way configuration is shown. Nothing in the
+shipped program passes it: not `build()`, not `wire()`, and no environment variable — of the seven
+`TEAMLINE_*` variables the package reads, none concerns a cap. So the cap could not be set at all
+without editing the source, and the document did not say so.
+
+**The test that should have caught it.** None. `R-6` had just taught the neighbouring lesson — a
+hand-written list of what a program exposes decays from the first commit after it is written — and
+this is the same list, one document over.
+
+**The fix, and the design that lost.** The route is in the table, marked as a write needing no team
+name, as is `/hook/now` beside it.
+
+For the cap there were two ways. Wire it to an environment variable — `TEAMLINE_CAP_INTO=beta:6` —
+or say plainly that it is a source edit. **Wiring it loses on a count that is zero:** no deployment
+has asked for a cap, so a new variable buys nothing measurable, and it adds a configuration row that
+then has to be kept true — which is precisely the class of defect this entry and `R-24` are both
+about. The document says it is a source edit, and says why it is not a variable.
+
+**The walk was wrong twice before it was right, both times in the same way.** First it read the HTTP
+status: `operator_say` answers **200 with `{"ok": false}`** when it refuses, so the status code says
+nothing. Then, reading the body, it showed `{"ok": false, "error": "pick a call and type a line"}` —
+because its two lanes had been registered *without feeds*, which under `require_feed` leaves them
+UNREACHABLE, turns the call into voicemail, and leaves no call id to aim at. With real feeds held the
+route answers `{"ok": true}` and the line is in the transcript.
+
+That is the fourth time today a probe of mine judged a wrapper instead of a payload — an MCP error
+returned as content, a tool-argument rejection, a 200 with a false body. **A transport that succeeded
+is not an operation that succeeded**, and this repository's own checks now say so in four places.
+
+**The checks.** `R-26-route` removes the route from the table again. `R-26-cap` restores the
+implication that the knob can be configured.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1499,7 +1541,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 160 of the 194 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 162 of the 196 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

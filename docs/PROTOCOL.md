@@ -147,6 +147,12 @@ Optional, per team, counted across every ringing or open call whose *callee* is 
 Switchboard(..., cap_into={"beta": 6})
 ```
 
+**Nothing in the shipped program passes it.** There is no environment variable and no `build()`
+argument that reaches `cap_into`, so setting a cap is a **source edit** — the line above is what the
+state machine accepts, not something you can configure. It is written this way rather than wired to
+a variable because no deployment has asked for one, and a configuration knob that exists only to be
+documented is one more claim to keep true.
+
 It is not per session — a session already holds one call at a time. The cap exists because a team
 whose sessions are woken by delivery has a wake budget: six simultaneous calls means six sessions
 interrupted at once. Outbound is never capped. A team with no entry is uncapped, which is the
@@ -171,7 +177,8 @@ from a restart as feedless until their holders reconnect.
 | `GET /healthz` | `{"up": true, ...}` plus counts; CORS-open so a dashboard can poll it |
 | `GET /directory` | the directory as JSON |
 | `GET /` | the operator page: every team, every lane, live |
-| `POST /hook/now` | `{session_id, text}` — set a lane's `now` line from outside the session |
+| `POST /hook/now` | `{session_id, text}` — set a lane's `now` line from outside the session. **A write, and it needs no team name** |
+| `POST /operator/say` | `{text, call_id}` — inject a line into any open call, attributed to the operator. **A write, and it needs no team name** |
 | `/mcp` | the `sw_*` tools |
 | `/ws` | feeds |
 

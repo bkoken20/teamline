@@ -416,6 +416,33 @@ async def run(tmp):
     ck("the security section names every surface that needs no team name",
        not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
 
+    # ---- the HTTP surface table must list every route the broker serves ---------------------------
+    # It listed six of seven. The missing one is `POST /operator/say`, which is a WRITE reachable with
+    # no credential -- so the one route a reader would most want in that table was the one not in it.
+    # Derived from the route table in the source, for the same reason as the security section: a route
+    # is a one-line addition and nothing makes a hand-written list follow it.
+    _doc_all = io.open(os.path.join(_root, "docs", "PROTOCOL.md"), encoding="utf-8").read()
+    _p7 = _doc_all.split("## 7.")[-1].split("\n## ")[0]
+    _bs7 = io.open(os.path.join(PKG, "teamline_broker.py"), encoding="utf-8").read()
+    _routes = _re0.findall(r"""(?:WebSocket)?Route\(\s*["']([^"']+)["']""", _bs7)
+    _unlisted = sorted({r for r in _routes if r not in _p7})
+    ck("the HTTP surface table lists every route the broker serves", not _unlisted,
+       {"serves": sorted(set(_routes)), "not in the table": _unlisted})
+
+    # ---- a knob the contract shows as configuration must be reachable, or said not to be ----------
+    # §5 shows `Switchboard(..., cap_into={...})` the way configuration is shown, and nothing in the
+    # shipped program passes it: no environment variable and no build() argument reaches it, so the
+    # cap cannot be set without editing the source. Every keyword the contract demonstrates is checked
+    # against what the broker actually passes, and one it does not pass has to say so.
+    _demo = set()
+    for _blk in _re0.findall(r"Switchboard\(([^)]*)\)", _doc_all):
+        _demo |= set(_re0.findall(r"(\w+)\s*=", _blk))
+    _wired = io.open(os.path.join(PKG, "switchboard_broker.py"), encoding="utf-8").read()
+    _unreachable = sorted(k for k in _demo if ("%s=" % k) not in _wired)
+    _unsaid7 = [k for k in _unreachable if "source edit" not in _doc_all]
+    ck("a constructor keyword the contract demonstrates is reachable, or the contract says it is not",
+       not _unsaid7, {"demonstrated": sorted(_demo), "not wired": _unreachable})
+
     # ---- retirement is timed from the DROP, and the docs timed it from GONE -----------------------
     # Both documents said a lane is retired after "GONE for 10 minutes". `gone_since` is stamped when
     # the feed DROPS, and the sweep retires at gone_since + GONE_RETIRE_S -- so it is 10 minutes after

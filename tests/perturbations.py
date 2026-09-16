@@ -210,6 +210,20 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-26-route", suite="e2e", file="docs/PROTOCOL.md",
+         find="| `POST /operator/say` | `{text, call_id}` — inject a line into any open call, attributed to the operator. **A write, and it needs no team name** |\n",
+         repl="",
+         must_fail="the HTTP surface table lists every route the broker serves",
+         why="takes the route back out of the surface table. It is the one a reader would most want "
+             "there: a write, reachable with no credential, and it was the one missing"),
+
+    dict(id="R-26-cap", suite="e2e", file="docs/PROTOCOL.md",
+         find="so setting a cap is a **source edit**",
+         repl="so setting a cap is done by configuration",
+         must_fail="a constructor keyword the contract demonstrates is reachable, or the contract says it is not",
+         why="puts back the implication that a documented knob can be set from outside the program. "
+             "Nothing passes cap_into: no environment variable, no build() argument"),
+
     dict(id="R-25-timing", suite="e2e", file="docs/PROTOCOL.md",
          find="| retired | 10 minutes after the feed drops (which is 8.5 minutes after it reads GONE, not 10), ",
          repl="| retired | GONE for 10 minutes, ",

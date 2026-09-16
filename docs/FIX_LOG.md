@@ -2439,6 +2439,61 @@ same suite run, and the claim was re-pointed. That is the check paying for itsel
 
 ---
 
+## R-29 — a message recorded as delivered, and then as undeliverable
+
+**Severity:** low in effect and bad in kind. Nothing is lost or misrouted; the **ledger** — the thing
+this system exists to produce — says two contradictory things about one message, and the second one
+is what a reader believes.
+
+**What was wrong.** The broker records the ack it is waiting for **after** awaiting its `send_text`
+calls:
+
+```
+  for fr in frames(ev):
+      await ws.send_text(...)          <- an ack can arrive during these
+  awaiting[ev["id"]] = (time.time(), ev["to"])
+```
+
+A client that acks inside that window is popped from an `awaiting` that has nothing in it yet, and
+`mark_delivered` settles the message. The late entry then expires in the sweep, which writes
+`delivery_failed` with the error **"no ack from ...'s watcher in Ns"** — naming the absence of the
+very ack that delivered it.
+
+**The review found it by reading and could not reproduce it.** It reproduces deterministically if you
+stop racing: a watcher that acks from inside its own `send_text` is the interleaving the finding
+describes, and it is what an in-process watcher on the broker's own event loop really does. Measured,
+one message, two rows: `delivered session_id=sess-B`, then `delivery_failed no ack ... in 0.5s`.
+
+**The fix is at the ledger, not at the route.** `mark_failed` refuses a message already delivered, and
+returns `False` when it does — mirroring `mark_delivered`, which has always refused to deliver one
+twice. The invariant is about the ledger, so it is enforced where the row is written.
+
+**The alternative was the review's own suggestion, and the number is the routes it covers.** Recording
+`awaiting` before the first send fixes the ordering, and the sweep is then correct. But it is one of
+**two** paths that can write a failure after a delivery: the send's own `except` is the other — a
+client that acks early and then dies mid-send raises straight into `mark_failed` for a settled
+message. (The third caller, an `accepted: false` ack, is already covered: a settled message has left
+the outbox, and the ack path drops anything not addressed to a lane's outbox entry.) One line at the
+ledger covers both; the reorder covers one, and needs a second line in the `except` to avoid leaving
+a stale entry behind.
+
+**The ordering was left as it is, deliberately.** With the guard in place it has no observable
+consequence: the entry is popped by the sweep either way, and a settled message is already out of the
+outbox, so nothing re-pushes it. Said here so a reader comparing the finding to the fix can see it was
+weighed rather than missed.
+
+**A guard that drops writes is exactly the change that hides a real failure, so the walk went after
+what it must NOT swallow.** A genuine failure for a message never delivered is still recorded. A
+failure followed **later** by a delivery — a retry that worked — keeps both rows, because the guard only
+blocks the impossible direction. Two failures for one message, from two retries, are both recorded.
+And the refusal is visible as `False`, not a silent drop. The sweep's other work — popping `awaiting`,
+setting `retry_at` — happens either side of the call and is untouched.
+
+**The check.** A watcher acks from inside its send; after the ack window expires, no message may
+appear in both the delivered and the failed sets. `R-29` removes the guard; the check goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

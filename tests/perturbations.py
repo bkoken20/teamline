@@ -204,6 +204,16 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-29", suite="e2e", file="teamline/switchboard.py",
+         find="        if msg_id in self._delivered:      # settled: a delivery is not reversible by a later sweep",
+         repl="        if False:                          # PERTURBED: the guard is gone",
+         must_fail="no message is recorded as delivered and then undeliverable",
+         why="lets a delivery_failed row be written for a message the ledger already calls delivered. "
+             "The broker records the ack it is waiting for only AFTER awaiting its send_text calls, so "
+             "a client that acks during those awaits is popped from an empty `awaiting`, and the late "
+             "entry expires into 'no ack from ... in Ns' -- naming the absence of the very ack that "
+             "delivered it"),
+
     dict(id="R-28", suite="e2e", file="teamline/switchboard.py",
          find='        self._commit("feed", ext=e["ext"], up=bool(up), sid=sid or None)',
          repl='        self._commit("feed", ext=e["ext"], up=bool(up))',

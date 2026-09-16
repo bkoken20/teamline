@@ -863,7 +863,21 @@ class Switchboard:
         return True
 
     def mark_failed(self, msg_id, error):
+        """A message the ledger already calls delivered cannot also have failed to be delivered.
+
+        Guarded HERE rather than at the callers, because more than one of them can reach this after a
+        delivery. The measured one: the broker records the ack it is waiting for only after awaiting
+        its send_text calls, so a client that acks DURING those awaits is popped from an empty
+        `awaiting`, and the late entry expires into "no ack from ... in Ns" -- for a message that ack
+        delivered. The other is the send's own except: a client that acks early and then dies mid-send
+        raises into a mark_failed for a message already settled.
+
+        It mirrors mark_delivered, which has always refused to deliver a message twice. Returns False
+        when it refuses, like that one."""
+        if msg_id in self._delivered:      # settled: a delivery is not reversible by a later sweep
+            return False
         self._commit("delivery_failed", msg_id=msg_id, error=str(error)[:300])
+        return True
 
     async def wait(self, team, name, timeout_s=60):
         e = self._mine(team, name)

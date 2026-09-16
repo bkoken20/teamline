@@ -1240,6 +1240,47 @@ async def run(tmp):
        dict(live=_live28.get("feed"), replayed=_rep28.get("feed")))
     _t28.cancel()
 
+    # ---- a message cannot be both delivered and undeliverable --------------------------------------
+    # `_send` records the ack it is waiting for AFTER awaiting its send_text calls. A client that
+    # acks during those awaits is popped from an `awaiting` that has nothing in it yet; the late
+    # entry then expires and the sweep writes delivery_failed for a message the ledger already calls
+    # delivered -- with the error "no ack ... in Ns", when the ack is exactly what delivered it.
+    #
+    # Not raced here: the fake watcher acks from INSIDE its send_text, which is the interleaving the
+    # finding describes and what an in-process watcher on the broker's own loop really does.
+    class _InstantAcker(_DeadWS):
+        def __init__(self):
+            self.acks = asyncio.Queue()
+
+        async def send_text(self, t):
+            _m = json.loads(t)
+            if _m.get("kind"):
+                await self.acks.put(json.dumps(dict(ack=_m["id"], accepted=True, session_id="sess-IA")))
+                await asyncio.sleep(0.15)
+
+        async def receive_text(self):
+            return await self.acks.get()
+
+    _r29root = os.path.join(tmp, "r29")
+    os.makedirs(_r29root, exist_ok=True)
+    _sw29 = _SWB.wire(_StubMCP(), _r29root, {"loop": asyncio.get_event_loop()},
+                      ack_timeout_s=0.3, backoff_s=30, feed_gone_s=30, state_every_s=5)
+    _sb29 = _sw29["sb"]
+    _tick29 = asyncio.create_task(_sw29["ticker"]())
+    _sb29.register("alpha", "caller", now="calling", session_id="sess-C", feed=True, sid="f-c")
+    _feed29 = asyncio.create_task(_sw29["feed"](_InstantAcker(), "beta", "callee", "waiting",
+                                                "f-b", "sess-IA"))
+    await asyncio.sleep(0.3)
+    _sb29.call("alpha", "caller", "beta/callee", "subject", "opening")
+    await asyncio.sleep(1.4)                       # well past ack_timeout_s, so the sweep has run
+    _r29rows = [json.loads(_l) for _l in io.open(_sb29.ledger_path, encoding="utf-8") if _l.strip()]
+    _delivered29 = {r["msg_id"] for r in _r29rows if r["event"] == "delivered"}
+    _both29 = [r for r in _r29rows if r["event"] == "delivery_failed" and r.get("msg_id") in _delivered29]
+    ck("no message is recorded as delivered and then undeliverable",
+       not _both29, [dict(msg=str(r.get("msg_id"))[:8], error=r.get("error")) for r in _both29])
+    _tick29.cancel()
+    _feed29.cancel()
+
     # ---- state file + healthz (an external liveness display) -------------------------------------------------
     sf = os.path.join(tmp, "broker_state.json")
     ck("the broker writes broker_state.json for an external display (ts, up, port, extensions, calls)",

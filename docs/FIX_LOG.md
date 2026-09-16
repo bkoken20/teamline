@@ -1907,6 +1907,58 @@ demonstration of what was wrong with it.
 
 ---
 
+## R-5 — the ordinary restart was refused as permanent, with a diagnosis naming the wrong cause
+
+**Severity:** high, and the only one of the three high findings a user would ever meet. It strands a
+lane with no retry and tells the operator something untrue about why.
+
+**What was wrong.** Every session here has a new identity. So the ordinary case — a socket drops, the
+harness restarts the session, it reconnects a few seconds later — comes back to its **own** lane with
+a *different* `sid`. Inside the silence window that lane still reads LIVE, so `register()` refuses it.
+
+The refusal is correct: `A2` requires proof to take a lane that is not yet presumed dead. **How it was
+delivered was not.** Close code **4001**, which this contract documents as permanent and which the
+shipped client treats as fatal:
+
+```
+  the broker REFUSED this feed and retrying cannot help: either your TEAM is not enabled on the
+  broker, or no --ext was given. STOPPING rather than looping.
+```
+
+Neither half is true. The condition is the clock and clears in at most `feed_gone_s`; the cause named
+is configuration, which has nothing to do with it. The lane becomes reclaimable a minute later — and
+the process that wanted it has exited. The README tells a session to run that client under a
+persistent monitor and rely on it.
+
+**The test that should have caught it.** `A2`'s checks cover the two halves it was written for: a
+stranger is refused, and the rightful holder reconnects **with its own sid**. Nobody reconnects with
+its own sid here, because nobody has the same sid twice. The case the system is actually built around
+was the case not tested.
+
+**The fix.** The broker asks the state machine whether the refusal is permanent or the clock: if the
+lane exists and reads LIVE, the refusal expires by itself, so it is sent as **4003** — the retryable
+code that already existed for the second-holder case — with `retryable: true`, a retry interval, and
+a message that says what is actually happening. 4001 keeps its meaning for the refusals that really
+are permanent.
+
+Deliberately *not* fixed by loosening `register()`: a lane inside its window is still protected, and
+weakening that is the takeover `A2` closed.
+
+**The walk ran the shipped client, not the broker's reply.** A close code is not the property anyone
+cares about — recovery is. So `teamline_feed.py` was started as a subprocess exactly as the README
+says to run it, against a lane whose socket had just dropped: it was refused, it printed
+`holder_busy` and waited, and it **registered 30 seconds later with no human involved**. Under the
+old behaviour it would have exited 3 immediately.
+
+**And the walk's first version disproved the fix by breaking the broker.** Reading the client's output
+with a blocking `readline()` starved the event loop the server runs on, so nothing answered and the
+client reported `feed_down`. Read asynchronously, the recovery is there. That is the fifth time today
+a verification of mine, rather than the thing verified, was at fault.
+
+**The check.** `R-5` restores the fatal code for a refusal that expires by itself.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1916,7 +1968,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 163 of the 205 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 165 of the 207 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

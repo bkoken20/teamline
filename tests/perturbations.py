@@ -166,6 +166,14 @@ PERTURBATIONS = [
          why="restates the counts as figures the code does not support. The original defect was a "
              "tests claim out by 70%, understating the suite it was describing"),
 
+    dict(id="R-5", suite="e2e", file="teamline/switchboard_broker.py",
+         find='                if _lane is not None and sb._hygiene(_lane) == "LIVE":',
+         repl='                if False:',
+         must_fail="a restarted session refused inside the window is told to RETRY, not that it is unwelcome",
+         why="sends the fatal code again for a refusal that expires by itself. Every session has a new "
+             "identity, so a restarted one comes back to its own lane with a different sid -- and the "
+             "shipped client stops for good on 4001, printing that the team is not enabled"),
+
     dict(id="R-4", suite="e2e", file="teamline/switchboard.py",
          find="        os.makedirs(calls_dir, exist_ok=True)\n",
          repl="",

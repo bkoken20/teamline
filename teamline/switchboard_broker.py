@@ -244,6 +244,25 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
                     sb.register(team, name, now=now or "", feed=True, sid=sid or None, session_id=session_id or None)
             except SB.SwitchError as ex:
                 await ws.accept()
+                # IS THIS REFUSAL PERMANENT OR IS IT THE CLOCK? A restarted session comes back with a
+                # new identity -- the ordinary case, since every session has a new one -- and inside
+                # the silence window its own lane still reads LIVE, so register() refuses it. That
+                # refusal is correct; sending it as 4001 was not. PROTOCOL documents 4001 as
+                # permanent and the shipped client stops for good on it, printing that the team is
+                # not enabled, which is not the cause. The condition clears in at most feed_gone_s.
+                #
+                # Asked of the state machine rather than of the message text: if the lane exists and
+                # reads LIVE, the refusal expires by itself and the caller should wait, not stop.
+                _lane = sb._ext.get(full)
+                if _lane is not None and sb._hygiene(_lane) == "LIVE":
+                    await ws.send_text(json.dumps(dict(
+                        error=("%s -- this is RETRYABLE. It is held by a socket that has not yet been "
+                               "presumed dead; if that is your own previous session, it is reaped "
+                               "after %.0fs of silence and your next attempt gets in."
+                               % (str(ex).split(";")[0], feed_gone_s)),
+                        retry_s=HOLDER_RETRY_S, retryable=True)))
+                    await ws.close(code=HOLDER_BUSY)
+                    return
                 await ws.send_text(json.dumps(dict(error=str(ex))))
                 await ws.close(code=4001)
                 return

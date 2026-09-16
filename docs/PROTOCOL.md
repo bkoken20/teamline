@@ -52,6 +52,13 @@ And must not retry these:
 what an honest reconnect looks like from the broker's side. The broker refuses second holders, so a
 client cannot accidentally cause double delivery.
 
+**A restarted session gets 4003, not 4001.** Every session has a new identity, so a session whose
+harness restarts it comes back to its own lane with a *different* `sid` — and inside the silence
+window that lane still reads LIVE, so the broker refuses it. It is refused **retryably**: the
+condition is the clock, not the configuration, and it clears when the old holder is reaped. Sending
+4001 there would tell a client to stop for good over a state that expires by itself, and the lane
+would stay empty until a human noticed.
+
 ### Acking and non-acking feeds
 
 A feed registered with `sid` is **non-acking**: a frame sent is a frame delivered.

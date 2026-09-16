@@ -1369,6 +1369,33 @@ async def run(tmp):
     await back.close()
     await asyncio.sleep(0.2)
 
+    # AND A RESTARTED SESSION COMES BACK WITH A DIFFERENT ID, which is the ordinary case: the harness
+    # restarts the session and the new one has a new identity. Inside the silence window the lane
+    # still reads LIVE, so register() refuses -- correctly, since A2 requires proof to take a lane
+    # that is not yet presumed dead. What was wrong is HOW it refused: close code 4001, which
+    # PROTOCOL documents as permanent and the shipped client treats as fatal, printing that the team
+    # is not enabled and exiting for good. The condition clears in at most feed_gone_s. A retryable
+    # situation announced as permanent strands the lane for as long as nobody is watching.
+    _r5 = await websockets.connect(
+        "ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=restarted&sid=session-RESTARTED" % PORT)
+    _r5msg = json.loads(await asyncio.wait_for(anext(aiter(_r5)), 3))
+    try:
+        await asyncio.wait_for(anext(aiter(_r5)), 2)
+    except Exception:
+        pass
+    _r5code = getattr(_r5, "close_code", None)
+    try:
+        await _r5.close()
+    except Exception:
+        pass
+    ck("a restarted session refused inside the window is told to RETRY, not that it is unwelcome",
+       _r5code != 4001 and _r5msg.get("retryable") is True and _r5msg.get("retry_s"),
+       {"close": _r5code, "msg": str(_r5msg)[:90]})
+    ck("...and the refusal says the lane is busy, not that the team does not exist",
+       "is LIVE" in str(_r5msg.get("error", "")) or "holder" in str(_r5msg.get("error", "")),
+       str(_r5msg.get("error", ""))[:90])
+    await asyncio.sleep(0.2)
+
     ids = [e["id"] for e in feeds["writer"] + feeds["review"] if e.get("kind") and not e.get("part")]
     ck("no frame reaches a non-acking feed twice (seen live: a nudge arrived twice, push vs retry sweep race)",
        len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1][:3])

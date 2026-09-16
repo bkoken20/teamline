@@ -2534,6 +2534,58 @@ not know. The new one goes red.
 
 ---
 
+## R-32 — no Python version where a reader looks, and a bare CLI invocation tracebacks
+
+**Severity:** low, and it is the first ten minutes — which is the part of a published repository that
+decides whether there is an eleventh.
+
+**The version.** The only statement of one in the whole tree was a **comment inside
+`requirements.txt`**: a file pip reads and a person does not. The README named none, anywhere.
+
+The number was measured rather than adopted. Every file in the package and the suites parses under
+**3.8** — syntax alone does not set the floor. What sets it is `anext`, which arrives in **3.10** and
+is used by the end-to-end suite. (The review also cited `sys.stdlib_module_names`; it is used by
+nothing in this tree any more, so it is not part of the floor.) The README now says **Python 3.10+**,
+names the function that makes it so, and says plainly that **3.13.1 is the only version anyone has
+run** — a floor the code requires is not a range someone tested.
+
+**The backstop, and what it cannot do.** A check reads the floor **out of the README** and parses
+every shipped file at it, so the claim is mechanical rather than a number somebody typed. Its name
+says the limit out loud: **syntax only**. `ast` cannot see that a stdlib name arrived later than the
+syntax around it — `anext` parses cleanly at 3.8 and does not exist there — which is exactly why the
+README names the function and not only the number.
+
+**The CLI.** `tool = sys.argv[1]` answered the commonest possible mistake — typing the name and
+pressing return — with `IndexError: list index out of range`. A traceback is the program failing, not
+the program telling you how to use it. It prints what it takes, with three real examples, the team it
+would use and the broker it would dial, and exits **2**, the convention for a usage error. `-h`,
+`--help` and `help` are a **request** rather than a mistake, so they exit **0**: a script checking the
+exit code should see success.
+
+**The walk went after what a guard at an entry point can swallow.** A real invocation must still be
+attempted: with no broker running, `sw_directory` fails to CONNECT rather than returning the help
+text, and an unknown tool name does the same. Had the guard been one character wider, every valid
+command would have been answered with usage.
+
+**Two things this turned up that were not the finding.**
+
+The README's line counts had drifted out of their own 20% band, because the checks added over this
+review grew the suites. Corrected from the same method the check uses. And the claim pinning that
+sentence, `C-L1b`, went stale for the **third** time — while its own comment said it was *"pinned to
+the SENTENCE and not to a figure"* and its target carried both figures. A claim can be as wrong about
+itself as any other prose. It now names no number at all.
+
+**A check of mine had the habit `R-30` had just removed.** The first version of the usage check
+required the literal word *"usage"* in the output. That is a word-grep on our own text, one entry
+after two of them were replaced for the same reason. It asserts behaviour now: no traceback, a
+non-empty message, a non-zero exit — and the check beside it carries the rest by requiring the
+message to name a tool the broker actually serves.
+
+**The checks.** `R-32` takes the CLI back to indexing `sys.argv[1]`; `R-32-doc` removes the version
+from the README. Both go red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

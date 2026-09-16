@@ -156,12 +156,15 @@ PERTURBATIONS = [
          why="puts back the stale suite count the repository shipped with -- there were three"),
 
     dict(id="C-L1b", suite="e2e", file="README.md",
-         # The numbers move whenever the suites grow, so this claim is pinned to the SENTENCE and not
-         # to a figure: `{LINES}` is substituted by the runner with a count deliberately far enough
-         # out to fail the 20% band. Written as literal figures it went stale twice in one day, and
-         # the only thing that noticed was a thirty-minute gate run.
-         find="Roughly 1,610 lines of implementation and 2,690 lines of",
-         repl="Roughly {LINES} lines of implementation and {LINES} lines of",
+         # The numbers move whenever the suites grow, so this claim names NO figure. The comment here
+         # used to say exactly that while the `find` below carried both of them, and it went stale a
+         # third time the day the counts were corrected -- a claim can be as wrong about itself as
+         # any other piece of prose. The target is now the one word before the figures, and the
+         # replacement pushes a `{LINES}` count in front of them so the README's sentence no longer
+         # states a count the check can read: `{LINES}` is substituted by the runner with a figure
+         # far enough out to fail the 20% band in any case.
+         find="Roughly ",
+         repl="Roughly about {LINES} or ",
          must_fail="the README's 'roughly N lines' claims are within 20% of the real counts",
          why="restates the counts as figures the code does not support. The original defect was a "
              "tests claim out by 70%, understating the suite it was describing"),
@@ -203,6 +206,22 @@ PERTURBATIONS = [
          why="skips a damaged completed row instead of refusing. The board would rebuild with a hole "
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
+
+    dict(id="R-32", suite="e2e", file="teamline/teamline_cli.py",
+         find='    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):',
+         repl="    if False:",
+         must_fail="the CLI with no arguments explains itself instead of tracebacking",
+         why="takes the CLI back to indexing sys.argv[1] directly, so the commonest possible mistake "
+             "-- typing the name and pressing return -- answers with an IndexError traceback instead "
+             "of telling the reader what the tool takes"),
+
+    dict(id="R-32-doc", suite="e2e", file="README.md",
+         find="**Python 3.10+.**",
+         repl="**Python.**",
+         must_fail="the README states a minimum Python version, where a reader starts rather than in a pip file",
+         why="removes the version from the page a reader opens first, leaving the tree's only "
+             "statement of it in a comment inside requirements.txt -- a file pip reads and a person "
+             "does not"),
 
     dict(id="R-30", suite="e2e", file="tests/test_perturbations.py",
          find='    return ("Scope: %d of the %d checks in the two suites are pinned this way. The rest are present "',

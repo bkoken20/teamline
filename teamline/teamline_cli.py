@@ -19,6 +19,25 @@ async def call(tool, **args):
             txt = "".join(c.text for c in r.content if getattr(c, "text", None))
             try: return json.loads(txt)
             except Exception: return txt
+USAGE = """teamline_cli.py -- call a switchboard tool from a shell.
+
+  python teamline_cli.py <tool> [json-args]
+
+  python teamline_cli.py sw_directory
+  python teamline_cli.py sw_register '{"ext": "docs-writer", "now": "writing the parser docs"}'
+  python teamline_cli.py sw_call '{"ext": "docs-writer", "peer": "beta/deep", "subject": "s", "opening": "o"}'
+
+Run sw_directory first and copy peer names from it. The team comes from TEAMLINE_PARTY (currently
+%s) and the broker from TEAMLINE_URL (currently %s). The full tool list is whatever the broker
+serves: docs/PROTOCOL.md section 7."""
+
 if __name__ == "__main__":
+    # A traceback is this program failing, not this program telling you how to use it. `sys.argv[1]`
+    # on its own raised IndexError for the commonest possible mistake: typing the name and pressing
+    # return. Exit 2 is the convention for a usage error, and the message goes to stderr so that a
+    # pipeline reading stdout gets nothing rather than an error it might parse as a result.
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):
+        print(USAGE % (PARTY, URL), file=sys.stderr)
+        raise SystemExit(0 if len(sys.argv) > 1 else 2)
     tool = sys.argv[1]; args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
     print(json.dumps(asyncio.run(call(tool, **args)), ensure_ascii=False))

@@ -93,6 +93,8 @@ Teams are an **administrative** boundary: they organise the directory, carry per
 caps, and decide delivery style. They are not a security boundary.
 
 ## Quickstart
+**Python 3.10+.** The suites use `anext`, which arrives in 3.10. Tested on **3.13.1** and on no other version -- 3.10 is the floor the code requires, not a range anyone has run.
+
 
 ```bash
 pip install -r requirements.txt
@@ -213,7 +215,7 @@ script headlessly; without node on PATH those two fail and the rest still run.
 ## Status
 
 Written in September 2026 and in continuous production use since, between two machines and three
-teams of agents on two different harnesses. Roughly 1,610 lines of implementation and 2,690 lines of
+teams of agents on two different harnesses. Roughly 1,763 lines of implementation and 3,368 lines of
 tests.
 
 Most of what is in the test suites got there the same way: something broke in live use, the failure

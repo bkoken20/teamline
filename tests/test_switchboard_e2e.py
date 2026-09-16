@@ -1299,6 +1299,45 @@ async def run(tmp):
     _tick29.cancel()
     _feed29.cancel()
 
+    # ---- the first ten minutes: an interpreter version, and a CLI that says how to use it ---------
+    # The only statement of a Python version in this tree was a COMMENT in requirements.txt, which is
+    # a file pip reads and a reader does not. The floor is asserted from the README, and then every
+    # shipped file is parsed AT that floor -- so the claim has a mechanical backstop rather than
+    # being a number somebody typed. The backstop covers SYNTAX only: ast cannot see that a stdlib
+    # name appeared in a later version than the syntax around it, which is why the README names the
+    # function that actually sets the floor.
+    _rd32 = _readme0()
+    _m32 = _re0.search(r"Python (\d+)\.(\d+)\+", _rd32)
+    ck("the README states a minimum Python version, where a reader starts rather than in a pip file",
+       bool(_m32), _rd32[:0] or "no 'Python X.Y+' in README.md")
+    _floor = (int(_m32.group(1)), int(_m32.group(2))) if _m32 else (3, 13)
+    _files32 = ([os.path.join(PKG, f) for f in sorted(os.listdir(PKG)) if f.endswith(".py")]
+                + [os.path.join(_tdir, f) for f in sorted(os.listdir(_tdir)) if f.endswith(".py")])
+    _toonew = []
+    for _f32 in _files32:
+        try:
+            _ast0.parse(io.open(_f32, encoding="utf-8").read(), feature_version=_floor)
+        except SyntaxError as _se32:
+            _toonew.append("%s: %s" % (os.path.basename(_f32), str(_se32)[:60]))
+    ck("...and every shipped file parses at that version (syntax; a stdlib name added later is not "
+       "visible to a parser)",
+       not _toonew, dict(floor="3.%d" % _floor[1], files=len(_files32), too_new=_toonew[:4]))
+
+    # A traceback is the program failing, not the program telling you how to use it.
+    _cli32 = subprocess.run([sys.executable, os.path.join(PKG, "teamline_cli.py")],
+                            capture_output=True, text=True, timeout=30)
+    _out32 = (_cli32.stdout + _cli32.stderr)
+    # Asserted on BEHAVIOUR, not on the word "usage": it must not traceback, it must say something,
+    # and it must exit non-zero so a script can tell this from a result. Requiring the literal word
+    # would be the habit R-30 removed from two other checks -- and the check below carries the "it
+    # tells you what to do" half, by requiring the message to name a tool the broker really serves.
+    ck("the CLI with no arguments explains itself instead of tracebacking",
+       "Traceback" not in _out32 and _out32.strip() != "" and _cli32.returncode != 0,
+       dict(exit=_cli32.returncode, out=_out32.strip()[-160:]))
+    ck("...and its usage names a tool the broker actually serves",
+       any(("sw_" + _t) in _out32 for _t in ("directory", "register", "call")),
+       _out32.strip()[:160])
+
     # ---- state file + healthz (an external liveness display) -------------------------------------------------
     sf = os.path.join(tmp, "broker_state.json")
     ck("the broker writes broker_state.json for an external display (ts, up, port, extensions, calls)",

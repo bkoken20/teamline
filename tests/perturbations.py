@@ -210,6 +210,20 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-11-doc", suite="e2e", file="docs/PROTOCOL.md",
+         find="**A ring waits 90 seconds of the callee's IDLE time, and up to 2 hours of yours.**",
+         repl="**A ring waits 90 seconds for an answer and then frees the line.**",
+         must_fail="the ring contract states both bounds the code enforces, not just the one it aims at",
+         why="restores the sentence a client author sizes a timeout from, which was wrong by up to 119 "
+             "minutes for the caller's own lane"),
+
+    dict(id="R-11-code", suite="e2e", file="teamline/switchboard.py",
+         find="NUDGE_S, CALL_CAP_S = 5 * 60, 2 * 3600",
+         repl="NUDGE_S, CALL_CAP_S = 5 * 60, 4 * 3600",
+         must_fail="the ring contract states both bounds the code enforces, not just the one it aims at",
+         why="moves the enforced cap without touching the document. The other direction, and the one "
+             "that happens in practice: a constant is tuned and the contract file is not reopened"),
+
     dict(id="R-10-file", suite="e2e", file="tests/test_switchboard.py",
          find="revisit the decision in docs/PROTOCOL.md 2",
          # `{MISSING}` is filled by the runner with a document name that does not exist. Spelled out

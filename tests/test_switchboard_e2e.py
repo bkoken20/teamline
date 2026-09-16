@@ -416,6 +416,25 @@ async def run(tmp):
     ck("the security section names every surface that needs no team name",
        not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
 
+    # ---- the ring contract must state the bound the code ENFORCES ---------------------------------
+    # PROTOCOL said "a ring waits 90 seconds for an answer and then frees the line". Those 90 seconds
+    # are IDLE time: the clock only advances while the callee is not mid-turn, and a callee that keeps
+    # reporting itself busy never advances it at all. Measured against the state machine, the caller's
+    # line was held 7170 s -- almost two hours -- and what finally ended it was the call cap.
+    #
+    # A client author sizes a timeout from that sentence, so both numbers are DERIVED from the module
+    # and the sentence must carry both. Requiring both is what forces the prose to explain why there
+    # are two; a check on the wording itself would only be a check on this author's phrasing.
+    import switchboard as _SB0
+    _p4 = io.open(os.path.join(_root, "docs", "PROTOCOL.md"), encoding="utf-8").read()
+    _p4 = _p4.split("## 4. Calls")[-1].split("\n## ")[0]
+    _ringtext = " ".join(s for s in _re0.split(r"(?<=[.!?])\s+", _p4) if "ring" in s.lower())
+    _hrs = _SB0.CALL_CAP_S // 3600
+    _capsaid = any(x in _ringtext for x in (str(_SB0.CALL_CAP_S), "%d h" % _hrs, "%d hour" % _hrs))
+    ck("the ring contract states both bounds the code enforces, not just the one it aims at",
+       str(_SB0.RING_TIMEOUT_S) in _ringtext and _capsaid,
+       {"ring sentences": _ringtext[:150], "need": (_SB0.RING_TIMEOUT_S, _SB0.CALL_CAP_S)})
+
     # ---- no address in this tree may be a real host ------------------------------------------------
     # This repository was forked out of a private deployment, so an address that COULD be somebody's
     # real machine is a question a reader has no way to answer. RFC 5737 reserves three ranges for

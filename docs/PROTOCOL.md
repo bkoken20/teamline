@@ -107,9 +107,20 @@ never share a lane.
 
 ## 4. Calls
 
-`ring → answer → lines → hangup`, one open call per extension. A ring waits 90 seconds for an answer
-and then frees the line. Five minutes of silence inside an open call nudges both sides; a call still
-open after 2 hours expires. Every call's transcript is written to `calls/<call_id>.md`.
+`ring → answer → lines → hangup`, one open call per extension. Five minutes of silence inside an open
+call nudges both sides; a call still open after 2 hours expires. Every call's transcript is written to
+`calls/<call_id>.md`.
+
+**A ring waits 90 seconds of the callee's IDLE time, and up to 2 hours of yours.** Size your timeouts
+from the second number, not the first. The 90-second clock advances only while the callee is not
+mid-turn: a callee whose harness keeps reporting it busy never advances it at all, and the ring is
+then ended by the same 2-hour cap an open call gets. A lane holds one call at a time, so for that
+whole period the caller's own line is occupied — and **the caller cannot cancel its own ring**. Both
+numbers are here because a client author sizing a timeout needs the one the broker enforces, which is
+the larger.
+
+The reason the clock stops rather than running: a callee that is mid-turn cannot see the ring yet, and
+timing it out would discard a call the callee was never given the chance to answer.
 
 **A refused call becomes an addressed voicemail** carrying the same subject and opening — refused
 meaning the peer is busy, gone, unreachable, already in a call, or the team is at its concurrency

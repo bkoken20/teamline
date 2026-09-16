@@ -1297,6 +1297,62 @@ file resolves and the passage does not. `R-10-url` restores the instruction that
 
 ---
 
+## R-11 — the ring contract stated a bound the code does not honour
+
+**Severity:** medium, and mislocated by that word. It is the contract document, and the number in it
+was wrong by up to **119 minutes** for the caller's own lane.
+
+**What was wrong.** §4 said *"A ring waits 90 seconds for an answer and then frees the line."* Those
+90 seconds are the callee's **idle** time: the clock advances only while the callee is not mid-turn,
+so a callee whose harness keeps reporting it busy never advances it at all, and the ring is ended by
+the same two-hour cap an open call gets — throughout which the caller's lane is occupied, because a
+lane holds one call at a time.
+
+Measured against the state machine, with both sides sending the keepalives a live session sends:
+
+```
+  after    90 s, the caller's line is  HELD   ring_wait=0.0
+  after  3600 s, the caller's line is  HELD   ring_wait=0.0
+  after  7150 s, the caller's line is  HELD   ring_wait=0.0
+  after  7260 s, the caller's line is  free
+  ledger reason: "unanswered for more than 2 h (the callee reported itself mid-turn throughout)"
+```
+
+The hold is deliberate and `A7` describes it. What was missing is that the contract file never did: a
+reader sizing a client timeout had one number, and it was the wrong one.
+
+**The test that should have caught it.** None. `A7`'s check asserts the *code* ends a held ring at the
+cap, and it passes. Nothing ever compared the document with the constants, so the two were free to
+disagree — and the disagreement was written down in this log while the contract file kept its old
+sentence.
+
+**The fix.** §4 leads with both numbers, says which one to size a timeout from, explains why the clock
+stops rather than runs — a mid-turn callee cannot see the ring yet, and timing it out would discard a
+call it was never given the chance to answer — and states plainly that **the caller cannot cancel its
+own ring**.
+
+**The walk tested the sentences, not the numbers.** The reproduction had settled the two bounds; the
+new paragraph asserted three further things, and asserting those unchecked would be this very defect.
+Put to the state machine: a second call from the same lane while ringing is refused — *"already holds
+call …"*; the caller's own hangup is refused — *"is RINGING, not IN_CALL"*, so the no-cancel sentence
+is true, which was the one worth doubting; and the ring ends at 7225 s with the ledger naming the cap.
+
+**The first reproduction was wrong, in a way worth recording.** Without keepalives the callee went
+GONE after 90 seconds of feed silence and the ring ended — at almost exactly the documented time, for
+an entirely unrelated reason. It read as a refutation of the finding. Both lanes are kept alive now,
+which is what two live sessions do.
+
+**What the check does not do.** It requires both numbers to appear in the sentences that mention the
+ring. It cannot verify the explanation around them: a document could state both and explain neither.
+Requiring both is what forces an author to say why there are two — a check on the wording would only
+be a check on this author's phrasing.
+
+**The checks.** `R-11-doc` restores the old single-number sentence. `R-11-code` moves the enforced cap
+without touching the document, which is the direction that actually happens: a constant is tuned and
+the contract file is never reopened.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1306,7 +1362,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 154 of the 186 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 154 of the 187 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

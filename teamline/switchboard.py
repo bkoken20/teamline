@@ -110,13 +110,47 @@ class Switchboard:
         if not os.path.exists(self.ledger_path):
             return
         self._replaying = True
+        # A TORN TAIL IS NOT CORRUPTION. `_commit` is one buffered append with no flush, so a crash
+        # mid-write leaves a partial final line -- and reading every line with an unguarded
+        # json.loads meant that line raised in __init__, so the broker did not start at all. The
+        # recommended deployment restarts automatically, which turns one unclean shutdown into a
+        # container loop with the ledger, its only memory, sitting right there intact but for a few
+        # bytes.
+        #
+        # The distinction is exact rather than a guess: a completed row always ends in a newline,
+        # because that is how it was written. So an unreadable line that is BOTH the last one AND
+        # unterminated is an append that did not finish. Anything else -- unreadable anywhere else,
+        # or unreadable but terminated -- is a completed row that has been damaged, and starting on
+        # it would continue with a hole in the state and say nothing about it.
+        _torn = None
         with io.open(self.ledger_path, encoding="utf-8") as fh:
-            for ln in fh:
-                if ln.strip():
-                    row = json.loads(ln)
-                    self._rows.append(row)
-                    self._apply(row)
+            _lines = fh.readlines()
+        for _i, ln in enumerate(_lines):
+            if not ln.strip():
+                continue
+            try:
+                row = json.loads(ln)
+            except ValueError as _ex:
+                if _i == len(_lines) - 1 and not ln.endswith("\n"):
+                    _torn = ln
+                    break
+                raise SwitchError(
+                    f"the ledger is damaged at line {_i + 1} of {self.ledger_path}: {_ex}. This is a "
+                    f"completed row, not an interrupted write, so it is NOT skipped -- replaying past "
+                    f"it would rebuild the board with a hole in it and say nothing. Repair or "
+                    f"truncate the file deliberately.")
+            self._rows.append(row)
+            self._apply(row)
         self._replaying = False
+        if _torn is not None:
+            # Drop the unfinished bytes, or the next append lands behind them and the partial line
+            # becomes a MIDDLE line -- corruption by our own hand, on the next restart.
+            with io.open(self.ledger_path, "rb") as fh:
+                _raw = fh.read()
+            _cut = _raw.rfind(b"\n") + 1
+            with io.open(self.ledger_path, "r+b") as fh:
+                fh.truncate(_cut)
+            self._commit("ledger_truncated", dropped_bytes=len(_torn), note="interrupted append")
         # Transient signals about a call that has since ended are stale, not pending. _apply now
         # drops these as each call ends, so a ledger written by this version arrives here clean --
         # but one written before that fix can still carry them, so the sweep stays. Same constant as

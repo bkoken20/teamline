@@ -177,6 +177,23 @@ history across a timezone change harder than it needs to be. Set `TZ`.
 Feed presence is the one thing *not* replayed: a socket that is gone is gone, so extensions come back
 from a restart as feedless until their holders reconnect.
 
+### An unreadable row
+
+A row is appended with one buffered write and no `fsync`, so a crash partway through leaves a
+half-written **last** line. That is an interrupted append, not damage: everything before it is whole.
+The broker starts, drops the unfinished bytes, and **records that it did so** — a `ledger_truncated`
+row, so the gap is in the history rather than only in somebody's memory.
+
+An unreadable row **anywhere else** is treated as the opposite, and the difference is exact rather
+than a guess: a completed row always ends in a newline, because that is how it was written. So a line
+that will not parse and is *not* the unterminated last one is a completed row that has been damaged,
+and the broker **refuses to start**, naming the file and the line. Replaying past it would rebuild
+the board with a hole in it and say nothing — and every later row describes a world that includes the
+one that was skipped.
+
+If that happens, repair or truncate the file deliberately. It is the broker's only memory, and it is
+the one decision this program will not make for you.
+
 ## 7. HTTP surface
 
 | route | purpose |

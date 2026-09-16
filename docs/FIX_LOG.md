@@ -1959,6 +1959,48 @@ a verification of mine, rather than the thing verified, was at fault.
 
 ---
 
+## R-13 — one unclean shutdown and the broker never started again
+
+**Severity:** medium by likelihood and total in effect: the broker does not start, and the ledger is
+its only memory.
+
+**What was wrong.** `_commit` appends a row with one buffered write and no `fsync`, so a crash partway
+through leaves a half-written final line — a power cut, a killed container, an unclean stop. `_replay`
+read every line with an unguarded `json.loads`, so that line raised inside `__init__`, so `build()`
+raised, so the broker did not come up. The deployment this README recommends sets `restart:
+unless-stopped`, which turns one bad shutdown into a container loop and a traceback naming a line
+number in a JSONL file that is, apart from a few bytes, completely intact.
+
+**The test that should have caught it.** None. `A8` discussed the ledger's *size* and nothing
+discussed its *integrity*, so the file's happy path was the only path anyone had walked.
+
+**The fix, and the distinction it rests on.** A torn tail is not corruption, and the difference is
+exact rather than a judgement: **a completed row always ends in a newline, because that is how it was
+written.** So an unreadable line that is both the last one *and* unterminated is an append that did
+not finish — the broker starts, drops the unfinished bytes, and commits a `ledger_truncated` row so
+the gap is in the history rather than only in somebody's memory.
+
+An unreadable row **anywhere else** is a completed row that has been damaged, and the broker refuses
+to start, naming the file and the line. Skipping it would rebuild the board with a hole and say
+nothing, while every later row describes a world that includes the one that was skipped. That is the
+decision this program will not make for you, and `PROTOCOL` §6 now says so.
+
+**The truncation is not optional.** Leaving the unfinished bytes in place would put the next append
+*behind* them — and on the following restart that partial line is no longer last, so it is corruption
+by our own hand, and the broker refuses. Tolerating a torn tail without removing it would have
+converted a recoverable state into a permanent one.
+
+**Two checks of mine were wrong before the code was.** The first asserted the file was byte-identical
+to the original afterwards — but dropping the bytes is itself recorded, so it is deliberately longer.
+The second looked for `"ts": 17` as the torn line's fingerprint, and **every real row carries it**,
+because epoch timestamps begin with 17. A sentinel that matches everything proves nothing. The check
+asks the real question now: does every line in the file parse.
+
+**The checks.** `R-13-tail` makes an interrupted append fatal again. `R-13-middle` skips a damaged
+completed row instead of refusing.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1968,7 +2010,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 165 of the 207 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 169 of the 213 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

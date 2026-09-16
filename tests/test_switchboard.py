@@ -702,6 +702,57 @@ def main():
            got and "hello wait" in got[0]["text"] and not s3.pending_for("beta/a"), got)
     asyncio.run(wcase())
 
+    # ---- 17. a torn last line must not stop the broker starting
+    # `_commit` is one buffered append with no flush, so a crash mid-write leaves a partial final
+    # line; `_replay` called json.loads on every line unguarded, so that line raised inside __init__
+    # and the broker did not start. The recommended deployment restarts automatically, which turns
+    # one unclean shutdown into a container loop -- and the ledger is the broker's only memory.
+    #
+    # The two cases are NOT the same and must not be treated the same. A torn tail is a crash during
+    # an append: everything before it is intact. A broken row in the MIDDLE is corruption of a
+    # completed row, and starting anyway would continue with a hole in the state and say nothing.
+    _t17 = tempfile.mkdtemp(prefix="sb_")
+    SBt, st, _ = fresh(_t17)
+    for i in range(3):
+        st.register("beta", "lane-%d" % i, now="n", session_id="s-%d" % i)
+    _lpath = os.path.join(_t17, "sb.jsonl")
+    _whole = open(_lpath, encoding="utf-8").read()
+    open(_lpath, "w", encoding="utf-8", newline="\n").write(_whole + '{"event": "register", "ts": 17')
+    try:
+        _re1 = SBt.Switchboard(ledger_path=_lpath, calls_dir=os.path.join(_t17, "calls"))
+        ck("a half-written last line does not stop the broker starting",
+           len(_re1.directory()) == 3, [e["ext"] for e in _re1.directory()])
+        # The intact prefix is kept and the unfinished bytes are gone -- and the file is LONGER than
+        # the prefix, because dropping them is itself recorded. Asserting equality with the original
+        # was wrong for that reason, not because the truncation failed.
+        # The property is that the FILE PARSES, not that some marker is absent: the first version
+        # looked for '"ts": 17' as the torn line's fingerprint, and every real row carries it too --
+        # epoch timestamps begin with 17. A sentinel that matches everything proves nothing.
+        _after = open(_lpath, encoding="utf-8").read()
+        _parses = all(json.loads(ln) for ln in _after.splitlines() if ln.strip())
+        ck("...and the torn tail is removed, so the next append is not corrupt in turn",
+           _after.startswith(_whole) and _parses and _after.endswith("\n"), repr(_after[-60:]))
+        ck("...and the ledger records that a partial row was dropped",
+           any(x["event"] == "ledger_truncated" for x in _re1.ledger_rows()),
+           [x["event"] for x in _re1.ledger_rows()[-3:]])
+    except Exception as e:
+        ck("a half-written last line does not stop the broker starting", False, repr(e)[:90])
+
+    _t17b = tempfile.mkdtemp(prefix="sb_")
+    SBu, su, _ = fresh(_t17b)
+    for i in range(3):
+        su.register("beta", "lane-%d" % i, now="n", session_id="s-%d" % i)
+    _lp2 = os.path.join(_t17b, "sb.jsonl")
+    _ls = open(_lp2, encoding="utf-8").read().splitlines()
+    _ls[1] = _ls[1][: len(_ls[1]) // 2]
+    open(_lp2, "w", encoding="utf-8", newline="\n").write("\n".join(_ls) + "\n")
+    try:
+        SBu.Switchboard(ledger_path=_lp2, calls_dir=os.path.join(_t17b, "calls"))
+        ck("a broken row in the MIDDLE is refused, not silently skipped", False, "it started anyway")
+    except Exception as e:
+        ck("a broken row in the MIDDLE is refused, not silently skipped",
+           isinstance(e, SBu.SwitchError) and "line 2" in str(e), "%s: %s" % (type(e).__name__, str(e)[:70]))
+
     # ---- 16. a replacement is allowed, and the ledger says whether it was the same session
     # Taking a name nobody holds is deliberate, and the held voicemail goes with it -- PROTOCOL says
     # so. What was missing is any way to tell "the session came back" from "somebody else took the

@@ -166,6 +166,27 @@ PERTURBATIONS = [
          why="restates the counts as figures the code does not support. The original defect was a "
              "tests claim out by 70%, understating the suite it was describing"),
 
+    dict(id="R-13-tail", suite="unit", file="teamline/switchboard.py",
+         find='                if _i == len(_lines) - 1 and not ln.endswith("\\n"):\n'
+              '                    _torn = ln\n'
+              '                    break\n',
+         repl="",
+         must_fail="a half-written last line does not stop the broker starting",
+         why="makes an interrupted append fatal again. A crash mid-write leaves a partial final line, "
+             "and the recommended deployment restarts automatically -- so one unclean shutdown became "
+             "a container loop with the ledger, the broker's only memory, intact but for a few bytes"),
+
+    dict(id="R-13-middle", suite="unit", file="teamline/switchboard.py",
+         find='                raise SwitchError(\n'
+              '                    f"the ledger is damaged at line {_i + 1} of {self.ledger_path}: {_ex}. This is a "',
+         repl='                continue\n'
+              '                raise SwitchError(\n'
+              '                    f"the ledger is damaged at line {_i + 1} of {self.ledger_path}: {_ex}. This is a "',
+         must_fail="a broken row in the MIDDLE is refused, not silently skipped",
+         why="skips a damaged completed row instead of refusing. The board would rebuild with a hole "
+             "in it and nothing would say so -- and every later row describes a world that includes "
+             "the one that was skipped"),
+
     dict(id="R-5", suite="e2e", file="teamline/switchboard_broker.py",
          find='                if _lane is not None and sb._hygiene(_lane) == "LIVE":',
          repl='                if False:',

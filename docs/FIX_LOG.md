@@ -772,11 +772,18 @@ that concluded the opposite.
 What survives from the original claim: the second commit was cleaning the grammatical wreckage of the
 rename rather than removing a name. What does not: anything about the history being free of them.
 
-**HISTORY STATUS (checked by the suite): CLEAN** — no private team name appears in any commit, in
-either case, across every ref. This line is not decoration: a check reads it and compares it with a
-live search of the history, and fails if the two disagree in *either* direction. It is here because
+**HISTORY STATUS (checked by the suite): CLEAN** — no private name of any kind appears in any commit,
+in either case, across every ref. This line is not decoration: a check reads it and compares it with
+a live search of the history, and fails if the two disagree in *either* direction. It is here because
 prose cannot carry that claim — the paragraphs around it describe the history's past in the past
 tense, and a check reading prose cannot tell a description from an assertion about now.
+
+⚠ **"team name" was the right word for one day only.** The first rewrite took the three project names
+out of the commits and that is what this line used to claim. It was true and it was narrow: the
+private deployment's **lane names**, and two phrases naming a machine and a network, were still in
+the history — in the initial commit, and in the very commits that removed them from the working tree,
+because deleting a name from a file puts it in that commit's diff. A second rewrite, on the same
+instruction, removed those as well. The word now is *any*.
 
 ⚑ Since R-12 the names being searched for are **not in this repository**, so that comparison runs
 only where the list is supplied — the maintainer's pre-publication gate. On a clone without it the
@@ -798,6 +805,33 @@ resolve, which is why the paragraph above names the commits by position instead.
 rewritten: a private-range address that identifies nobody and was already a stand-in — the real broker
 address, the network name and the machine names were never in the history at all — and the author
 identities, which are the owner's to decide rather than a fix log's.
+
+### The second rewrite, and why one was not enough
+
+The pass above was scoped to the three project names. Four more strings were still in the commits: two
+lane names of the private deployment, and two phrases naming a machine and a network. They were in the
+initial commit, and — this is the part worth stating plainly — **in the commits that removed them from
+the working tree.** Deleting a name from a file writes it into that commit's diff. Every fix in this
+log that took a private name out of a file put that name into the history in the same motion.
+
+They were also present in a second form. Until `R-12` the de-identification check held each name split
+across two string literals so it could scan its own file, so every historical version of that file
+carried the halves — and rejoining them is one line of `ast`, which is how `R-12` was reproduced in
+the first place. A rewrite matching only the joined spelling would have left them all.
+
+So the second pass replaced both forms: the joined name, and any adjacent pair of string literals
+whose concatenation was a private name, substituted by the same split of the replacement so the
+historical code still reads as code rather than as something scrubbed.
+
+**Verified by content, not by diff.** `git log -S` finds commits where the *number* of occurrences
+changed; a commit that merely carries a string, unchanged from its parent, is invisible to it — a
+weaker question than the one that matters. Instead: a case-insensitive content search for all fifteen
+names across all 47 commits, and the `R-12` reassembly attack run over **every `.py` blob in every
+commit** — 115 distinct blobs — joining adjacent literals to see whether any join lands on a private
+name. Both clean. The working tree's hash is byte-identical before and after, the commit count is
+unchanged, `refs/original` is dropped and the objects pruned.
+
+**What this costs a reader:** every hash changed again. Nothing in this log cites one.
 
 *(The false phrase is deliberately paraphrased rather than quoted above: a check now asserts that this
 log does not contain that assertion, and quoting it verbatim would trip that check. Same reason the

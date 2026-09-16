@@ -18,4 +18,5 @@ httpx2==2.12.0
 # starts cleanly and then refuses every /ws upgrade -- a broker that is up and answers nothing.
 #
 # The end-to-end suite additionally shells out to `node` to parse and run the operator page's own
-# script. Without node on PATH those two checks fail; the rest of the suite does not need it.
+# script. Without node on PATH those three checks report NOT RUN and the rest of the suite runs;
+# it does not need node.

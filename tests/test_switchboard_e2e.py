@@ -135,10 +135,30 @@ async def run(tmp):
     async with httpx2.AsyncClient() as hc:
         pg = (await hc.get("http://127.0.0.1:%d/" % PORT)).text
     ck("the page carries no v1 team cards", "v1 line" not in pg and "id=parties" not in pg, pg[:100])
+    def node_run(args, exe="node", **kw):
+        """Run node, or say it is absent. Never raise for a missing binary.
+
+        subprocess.run raises FileNotFoundError when the executable is not on PATH, and nothing
+        caught it: the suite stopped at the first node call, three checks below never ran and
+        neither did the hundred after them -- while README.md and requirements.txt both promised
+        that the rest of the suite still runs. `exe` is a parameter so the check at the end of this
+        block can exercise the missing-binary path without uninstalling anything."""
+        try:
+            return subprocess.run([exe] + args, **kw)
+        except FileNotFoundError:
+            return None
+
+    # The absence is reported ONCE, as NOT RUN -- the convention this suite already uses for a check
+    # it cannot perform. NOT RUN is not a pass, and it is not a failure either: the thing was not
+    # asked. A green suite that silently skipped three checks would be the worse outcome.
     js = pg.split("<script>")[1].split("</script>")[0]
-    pr = subprocess.run(["node", "-e", "new Function(require('fs').readFileSync(0,'utf8'));console.log('ok')"],
-                        input=js, capture_output=True, text=True, encoding="utf-8")
-    ck("the page SCRIPT parses", pr.returncode == 0 and "ok" in pr.stdout, pr.stderr[-200:])
+    pr = node_run(["-e", "new Function(require('fs').readFileSync(0,'utf8'));console.log('ok')"],
+                  input=js, capture_output=True, text=True, encoding="utf-8")
+    if pr is None:
+        print("  NOTE  the three operator-page checks NOT RUN: node is not on PATH. Not a pass -- "
+              "the page's own script was never parsed or executed. Everything else below did run.")
+    else:
+        ck("the page SCRIPT parses", pr.returncode == 0 and "ok" in pr.stdout, pr.stderr[-200:])
 
     # ---- the page must RENDER every team in the directory, not a hard-coded pair (operator 09-08: gamma)
     # page_probe.js runs the page's own dir() headlessly, so this is behaviour, not a grep.
@@ -154,15 +174,30 @@ async def run(tmp):
         json.dump([mk("alpha/aaa", "alpha"), mk("beta/bbb", "beta", holders=3),
                    mk("gamma/ccc", "gamma")], fh)
     probe_js = os.path.join(os.path.dirname(os.path.abspath(__file__)), "page_probe.js")
-    pr2 = subprocess.run(["node", probe_js, probe_page, probe_dir], capture_output=True, text=True, encoding="utf-8")
-    out = pr2.stdout
-    ck("the page RENDERS every team in the directory, gamma included (it iterated a hard-coded pair)",
-       pr2.returncode == 0 and all(t in out for t in ("alpha", "beta", "gamma"))
-       and all(n in out for n in ("aaa", "bbb", "ccc")), (pr2.stderr[-200:] or out[:200]))
-    # holders > 1 is a DEFECT STATE (every message delivered that many times) and was invisible on
-    # this page while a lane held five holders. The badge must render, and must NOT render at 1.
-    ck("the page flags an extension held by more than one feed, and stays silent at one holder",
-       "3 HOLDERS" in out and "1 HOLDERS" not in out, out[:240])
+    pr2 = node_run([probe_js, probe_page, probe_dir], capture_output=True, text=True, encoding="utf-8")
+    if pr2 is not None:
+        out = pr2.stdout
+        ck("the page RENDERS every team in the directory, gamma included (it iterated a hard-coded pair)",
+           pr2.returncode == 0 and all(t in out for t in ("alpha", "beta", "gamma"))
+           and all(n in out for n in ("aaa", "bbb", "ccc")), (pr2.stderr[-200:] or out[:200]))
+        # holders > 1 is a DEFECT STATE (every message delivered that many times) and was invisible on
+        # this page while a lane held five holders. The badge must render, and must NOT render at 1.
+        ck("the page flags an extension held by more than one feed, and stays silent at one holder",
+           "3 HOLDERS" in out and "1 HOLDERS" not in out, out[:240])
+    # The promise the two files make is that a missing node costs those checks and nothing else, so
+    # that is what is asserted: the helper REPORTS an absent binary rather than raising through the
+    # suite. Exercised against a name no PATH can hold, which is cheaper and more certain than
+    # arranging for node itself to be missing.
+    # The raise is caught HERE too, so that removing the guard makes this check FAIL rather than
+    # abort the suite -- a check that raises is not a check that failed, and the perturbation that
+    # pins this fix needs a clean red to land on.
+    try:
+        _absent = node_run(["--version"], exe="teamline-no-such-binary-x7", capture_output=True)
+        _absent_ok, _absent_why = _absent is None, "returned %r" % (_absent,)
+    except Exception as _ae:
+        _absent_ok, _absent_why = False, "raised %s instead of reporting the absence" % type(_ae).__name__
+    ck("a missing node is reported, not raised -- the rest of the suite runs, as both files promise",
+       _absent_ok, _absent_why)
 
     # ---- 15. a team the broker does not know must FAIL LOUDLY, never opaquely and never in a loop
     # Measured before the fix: sw_register answered only "Error executing tool
@@ -904,6 +939,22 @@ async def run(tmp):
        _scope.returncode == 0 and len(_nums) >= 2 and _nums[0] == str(_pn) and _nums[1] == str(_ckn),
        dict(printed=_scope.stdout.strip()[:120], counted_pinned=_pn, counted_checks=_ckn,
             stderr=_scope.stderr[-120:]))
+
+    # ---- the fix log's own open list states a count, and nothing was checking it -----------------
+    # It read "170 of the 213 checks are not pinned" long after both numbers had moved, because the
+    # suites and the claim list grow together and prose does not. That is the defect this whole log
+    # exists to keep out of a published repository, sitting in the log itself. The figures are
+    # DERIVED here rather than compared to a remembered pair: a check that hardcodes the number it
+    # is checking goes stale in the same breath as its subject.
+    _fl = io.open(os.path.join(os.path.dirname(PKG), "docs", "FIX_LOG.md"), encoding="utf-8").read()
+    _claims = len(_re0.findall(r"dict\(id=",
+                               io.open(os.path.join(_tdir, "perturbations.py"), encoding="utf-8").read()))
+    _stated_pin = _re0.search(r"(\d+) of the (\d+) checks in the two suites are not pinned", _fl)
+    ck("the fix log's own open list counts the unpinned checks correctly",
+       bool(_stated_pin) and int(_stated_pin.group(2)) == _ckn
+       and int(_stated_pin.group(1)) == _ckn - _claims,
+       dict(log=_stated_pin.group(0) if _stated_pin else "no such sentence",
+            measured="%d of the %d" % (_ckn - _claims, _ckn)))
 
     # ---- a security control that is OFF must be disclosed where people look for it ---------------
     # The broker disables the MCP transport's DNS-rebinding guard, for a real reason: it allows only

@@ -210,7 +210,8 @@ python tests/test_perturbations.py      # re-derives every claim in the fix log 
 No setup, no fixtures to install, no network. The end-to-end suite starts a broker in-process, drives
 it with real MCP clients and real WebSocket feeds, and includes a fake acking watcher standing in for
 a second team's delivery agent. Two of its checks shell out to `node` to run the operator page's own
-script headlessly; without node on PATH those two fail and the rest still run.
+script headlessly. Without node on PATH those three report NOT RUN -- which is neither a pass
+nor a failure -- and every other check still runs.
 
 ## Status
 

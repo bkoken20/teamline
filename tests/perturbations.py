@@ -207,6 +207,15 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R2-1", suite="e2e", file="tests/test_switchboard_e2e.py",
+         find="        except FileNotFoundError:",
+         repl="        except ValueError:",
+         must_fail="a missing node is reported, not raised -- the rest of the suite runs, as both files promise",
+         why="stops the suite catching an absent node. subprocess.run raises FileNotFoundError for a "
+             "missing binary, and with it uncaught the suite aborts at the first of the three "
+             "operator-page checks: measured before the fix, 3 checks reported and 103 never ran, with "
+             "no verdict at all -- while README.md and requirements.txt both promised the rest would"),
+
     dict(id="R-32", suite="e2e", file="teamline/teamline_cli.py",
          find='    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help", "help"):',
          repl="    if False:",

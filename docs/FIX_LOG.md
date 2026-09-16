@@ -2586,6 +2586,93 @@ from the README. Both go red.
 
 ---
 
+## R-1 — the history carried the private names, and this log said it did not
+
+**Severity:** the highest in this file. Irreversible the moment a branch is pushed, and the log
+asserted the opposite — which is worse than not having checked, because it tells a reader the
+question was settled.
+
+**Why this entry exists at all, given that `D-L1` already carries the correction.** It was filed as
+`R-1` by a cold review, and for a while there was no `R-1` anywhere in this log: the work was done,
+the correction was written into the entry it corrected, and nothing tied either to the number the
+finding was raised under. A reader following the review's own numbering found silence, which reads as
+*not worked*. A record that is complete only if you already know where to look is not a record.
+
+**What was wrong.** De-identification had replaced the private deployment's names in the working
+tree. A push publishes **every commit**, not the working tree. Two commits still carried the names:
+the initial one, in source text, and a later one in its own message — the message body that GitHub
+renders on the commits page. Removing a name from a file puts that name in the diff of the commit
+that removed it, so the act of cleaning had created new copies.
+
+**And the log declared the history clean.** `D-L1` said so in plain words. The check behind that
+claim was `git log -S`, which is **case-sensitive**, run against the lower-case spellings while the
+names appear in the history in capitals. It returned zero, and the zero was read as absence.
+
+**The fix: a second rewrite of the whole history**, after a backup branch was taken. Both the joined
+spellings and the fragment spellings were replaced, in **file contents and in commit messages**, and
+`refs/original` was pruned so no ref could reach the old objects.
+
+**The verification does not trust a diff.** A rewrite that looks right is not a history that is
+clean, so it was checked by **content**: a case-insensitive search for every private name across
+every commit on every ref; the reassembly attack from `R-12` run over every distinct `.py` blob in
+the history, not just the tips, because a name split across two string literals defeats a plain
+search; and the working tree's hash compared before and after, byte-identical, to prove the rewrite
+changed history and not the code being published.
+
+**The check that keeps it true.** `D-L1` carries a `HISTORY STATUS` line that the suite reads and
+compares against a live search of the commits, failing if the two disagree **in either direction**.
+Its wording was widened at the same time: it used to promise only that no *team* name was present,
+which was true of the first rewrite and narrow — lane names, a machine and a network had still been
+there. It now covers any private name.
+
+**The honest limit, already disclosed above.** That check needs a list of private names which is
+deliberately **not** in this repository. Without it the check prints `NOT RUN`, which is not a pass,
+and says so. A private identifier nobody thought to put on the list would not have been found by any
+of this.
+
+---
+
+## R2-1 — two files promised graceful degradation the code did not do
+
+**Severity:** medium, and it is the class this log exists for: the repository states something, and
+the code does otherwise. Found by a cold review of the publication candidate.
+
+**What was claimed.** `README.md` and `requirements.txt` both said that the end-to-end suite shells
+out to `node` for the operator page's own script, and that **without node on PATH those two checks
+fail and the rest still run**.
+
+**What happens.** `subprocess.run(["node", ...])` raises `FileNotFoundError` when the binary is not
+there, and nothing caught it. Measured, by running the real suite with node removed from PATH:
+**3 checks reported and 103 never ran**, with no verdict line at all — a traceback instead. A reader
+without node did not see two failures. They saw the suite fall over and could not tell whether the
+repository works.
+
+The count was wrong too: **three** checks use node, not two.
+
+**The fix makes the code true, rather than the sentence weaker.** The documented behaviour is the
+behaviour worth having, so node is invoked through a helper that reports an absent binary instead of
+raising, and the three checks report **NOT RUN** — the convention this suite already uses where it
+cannot perform a check. NOT RUN is not a pass and not a failure: the thing was not asked. Both files
+now say that, and say three.
+
+**The distinction the walk went after, because a `try/except` around a subprocess call is the classic
+swallow-everything fix.** A **failing** node script and a **missing** node binary must not look
+alike. Only `FileNotFoundError` is caught, so a page script that throws still returns a result and is
+still judged; catching `Exception` would have turned a broken operator page into "node is not
+installed" and skipped the check that exists to catch it.
+
+**The promise, measured end to end.** With node: 104 checks, ALL PASS. Without node: **101 checks,
+exit 0, the NOT RUN note printed, no traceback, and a verdict reached.** The difference is exactly
+three, which is what the two files now promise.
+
+**The check.** It calls the helper with an executable name no PATH can hold, which is cheaper and
+more certain than arranging for node to be missing. It catches the raise itself, so that removing the
+guard makes it **fail** rather than abort the suite — a check that raises is not a check that failed,
+and the claim that pins this needs a clean red to land on. `R2-1` stops the suite catching the
+absence; the check goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -2595,11 +2682,12 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 170 of the 213 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 155 of the 229 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |
+| **The history carries three author identities.** Counted: 18 commits a personal e-mail address, 38 a GitHub noreply address (which still carries the account name and numeric id), 10 a maintainer address. Nothing technical stops a push; which identity a public history carries is the maintainer's decision, and changing it afterwards means rewriting the history again. | **open, and a decision rather than a defect** |
 
 **On the review this log describes, and what became of it.** The adversarial review produced 94
 findings, deduplicated to 43 items in six groups. Fourteen of those are closed above — `A1`–`A9` and

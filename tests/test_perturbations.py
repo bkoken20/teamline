@@ -48,7 +48,13 @@ def run_suite(which, needle=""):
     repository (that was R-12), so a claim about that scan has to hand it one -- and the needle is
     generated fresh per run rather than written down here, because a needle spelled in this file
     would already be in the tree the scan walks, and the check would go red with the perturbation
-    doing nothing at all. A claim that fires either way proves nothing."""
+    doing nothing at all. A claim that fires either way proves nothing.
+
+    EVERY run gets one, not only the claims that plant it. Two checks print NOT RUN without a list,
+    and a claim naming a check that did not run reads as "the check cannot fail" -- which is how this
+    runner started exiting 1 on a fresh clone the moment the list moved out of the repository. That
+    is V-1's failure exactly: the advertised command broken for every reader but us. A needle that is
+    in no file and in no commit lets both checks run and measure honestly."""
     env, tmp = dict(os.environ), ""
     if needle:
         fd, tmp = tempfile.mkstemp(prefix="deid-", suffix=".txt")
@@ -92,9 +98,9 @@ def main():
                             % src.count(p["find"])))
                 print("  AMBIG  %-12s %s" % (p["id"], p["must_fail"][:70]))
                 continue
-            # A claim about the de-identification scan gets a one-off needle, substituted into its
-            # payload: `{NEEDLE}` in the repl, the same string in the list handed to the suite.
-            needle = "zz-" + uuid.uuid4().hex[:12] if "{NEEDLE}" in p["repl"] else ""
+            # Every run gets a one-off needle so the two list-dependent checks actually run; a claim
+            # that wants it planted as well writes `{NEEDLE}` into its payload.
+            needle = "zz-" + uuid.uuid4().hex[:12]
             write(path, src.replace(p["find"], p["repl"].replace("{NEEDLE}", needle)).encode("utf-8"))
             out = run_suite(p["suite"], needle)
             fails = failed_checks(out)

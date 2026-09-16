@@ -265,6 +265,7 @@ async def run(tmp):
     # goes red merely because somebody followed the quickstart from the repo root -- a red suite
     # caused by using the software as documented. .gitignore already names what is not ours; read it
     # rather than hard-coding one name and meeting the next runtime directory the same way.
+    import ast as _ast0
     import fnmatch as _fn0
     _root = os.path.dirname(PKG)
     _gi = os.path.join(_root, ".gitignore")
@@ -278,39 +279,104 @@ async def run(tmp):
     _undesc = [d for d in _tops if (d + "/") not in _readme0() and ("`" + d + "`") not in _readme0()]
     ck("every top-level directory is described in the README, not just the package", not _undesc, _undesc)
 
+    # ---- this tree must not ASSEMBLE a name out of fragments --------------------------------------
+    # The denylist below cannot see a name that is split across two literals -- which is exactly how
+    # the denylist itself was written, so it could not see its own contents and stayed green while
+    # publishing them. This check therefore carries NO list. It forbids the mechanism instead, which
+    # needs no secret to enforce and cannot be defeated by choosing different words. `ast`, not text,
+    # because the question is what the source concatenates rather than what it looks like.
+    def _is_lit(_n):
+        return isinstance(_n, _ast0.Constant) and isinstance(_n.value, str)
+
+    _asm = []
+    for _dp, _dn, _fs in os.walk(_root):
+        _dn[:] = [d for d in _dn if not d.startswith(".") and d != "__pycache__"
+                  and not any(_fn0.fnmatch(d, p) for p in _ignored)]
+        for _f in [x for x in _fs if x.endswith(".py")]:
+            _rel = os.path.relpath(os.path.join(_dp, _f), _root)
+            try:
+                _tree = _ast0.parse(io.open(os.path.join(_dp, _f), encoding="utf-8").read())
+            except SyntaxError:
+                continue
+            for _nd in _ast0.walk(_tree):
+                _all_lit = lambda _xs: len(_xs) > 1 and all(_is_lit(_x) for _x in _xs)
+                # "a" + "b" -- a literal split by hand
+                if (isinstance(_nd, _ast0.BinOp) and isinstance(_nd.op, _ast0.Add)
+                        and _is_lit(_nd.left) and _is_lit(_nd.right)):
+                    _asm.append("%s:%d" % (_rel, _nd.lineno))
+                # tuple(a + b for a, b in (("x", "y"), ...)) -- a whole LIST split by hand
+                elif (isinstance(_nd, (_ast0.GeneratorExp, _ast0.ListComp, _ast0.SetComp))
+                        and isinstance(_nd.elt, _ast0.BinOp) and isinstance(_nd.elt.op, _ast0.Add)
+                        and isinstance(_nd.elt.left, _ast0.Name) and isinstance(_nd.elt.right, _ast0.Name)):
+                    _asm.append("%s:%d" % (_rel, _nd.lineno))
+                # "".join(["a", "b"]) and "%s%s" % ("a", "b") -- found by attacking the first version
+                elif (isinstance(_nd, _ast0.Call) and isinstance(_nd.func, _ast0.Attribute)
+                        and _nd.func.attr == "join" and _is_lit(_nd.func.value) and len(_nd.args) == 1
+                        and isinstance(_nd.args[0], (_ast0.List, _ast0.Tuple))
+                        and _all_lit(_nd.args[0].elts)):
+                    _asm.append("%s:%d" % (_rel, _nd.lineno))
+                elif (isinstance(_nd, _ast0.BinOp) and isinstance(_nd.op, _ast0.Mod)
+                        and _is_lit(_nd.left) and isinstance(_nd.right, _ast0.Tuple)
+                        and _all_lit(_nd.right.elts)):
+                    _asm.append("%s:%d" % (_rel, _nd.lineno))
+                # f"{'a'}b" -- a literal smuggled through an interpolation slot
+                elif (isinstance(_nd, _ast0.JoinedStr)
+                        and any(isinstance(_v, _ast0.FormattedValue) and _is_lit(_v.value)
+                                for _v in _nd.values)):
+                    _asm.append("%s:%d" % (_rel, _nd.lineno))
+    ck("no file in this tree assembles a string out of literal fragments",
+       not _asm, sorted(set(_asm))[:8])
+
     # ---- a publish candidate carries no identifier from the deployment it was forked from ---------
     # The rename that de-identified this repository replaced the TEAM names and left the LANE names
     # behind in comments -- a real lane of the private deployment with only its team relabelled,
     # pointing at an incident log no reader here can see. The de-identifying commit caught the
     # grammatical wreckage of that rename; it did not catch these. No example is quoted here on
     # purpose: this check scans its own file, and a comment illustrating the leak IS the leak.
-    # The needles are assembled from fragments so this check can scan its OWN file without matching
-    # itself -- a denylist written out literally reports the denylist.
-    _private = tuple(a + b for a, b in (
-        ("lan", "e-alpha"), ("lane-", "beta"), ("lane-g", "amma"), ("lane-del", "ta"),
-        ("lane", "-epsilon"), ("la", "ne-zeta"), ("la", "ne-eta"), ("lan", "e-theta")))
-    # Phrases, not identifiers. Assembled from fragments for the same reason as above -- and note
-    # that this forces the fix log to PARAPHRASE these rather than quote them, which is the third
-    # time that rule has applied here (the de-identification comment, the history-status sentence).
-    _deploy = tuple(a + b for a, b in (("the broker's", " host"), ("the private", " network")))
-    _leaks = []
-    for _dp, _dn, _fs in os.walk(_root):
-        _dn[:] = [d for d in _dn if not d.startswith(".") and d != "__pycache__"
-                  and not any(_fn0.fnmatch(d, p) for p in _ignored)]
-        for _f in _fs:
-            # Everything, not an extension allowlist. The walk of the first version showed it was
-            # skipping Dockerfile, LICENSE and page_probe.js -- all published, all able to carry a
-            # name. Binary files simply will not match; errors="replace" keeps them from raising.
-            _txt = io.open(os.path.join(_dp, _f), encoding="utf-8", errors="replace").read()
-            _leaks += ["%s:%s" % (os.path.relpath(os.path.join(_dp, _f), _root), _w)
-                       for _w in _private if _w in _txt]
-            # A second class the lane-name list could not catch: PHRASES naming the private
-            # deployment's infrastructure. "the <adjective> host" reads, to a stranger, as a
-            # reference to a machine they are assumed to know and which is defined nowhere here.
-            _leaks += ["%s:%s" % (os.path.relpath(os.path.join(_dp, _f), _root), _w)
-                       for _w in _deploy if _w in _txt]
-    ck("no lane name or deployment phrase from the private deployment survives in the publish tree",
-       not _leaks, _leaks[:8])
+    # THE LIST IS NOT IN THIS REPOSITORY, and that is the point. It named the private deployment's
+    # lanes, its machine and its teams. Held here it published exactly what it exists to keep out --
+    # split across two literals, which let this check scan its own file but is a comment about the
+    # check, not a protection: a reader joins them in one line of `ast`. The structural check above
+    # is what a public repository CAN enforce about itself, because it needs no secret.
+    #
+    # The list is supplied from outside: TEAMLINE_DEID_LIST names a file, one string per line, `#`
+    # comments and blanks ignored. There is deliberately no default path -- a default would name the
+    # machine it points at. With no list this scan DOES NOT RUN and says so; it never reports a pass
+    # it did not earn. The maintainer's pre-publication gate holds the real list and is what enforces
+    # the names before anything is pushed.
+    _deid_path = os.environ.get("TEAMLINE_DEID_LIST", "")
+    _needles = [ln.strip() for ln in io.open(_deid_path, encoding="utf-8")
+                if ln.strip() and not ln.lstrip().startswith("#")] if os.path.isfile(_deid_path) else []
+    if _needles:
+        _leaks = []
+        for _dp, _dn, _fs in os.walk(_root):
+            _dn[:] = [d for d in _dn if not d.startswith(".") and d != "__pycache__"
+                      and not any(_fn0.fnmatch(d, p) for p in _ignored)]
+            for _f in _fs:
+                # Everything, not an extension allowlist. The walk of the first version showed it was
+                # skipping Dockerfile, LICENSE and page_probe.js -- all published, all able to carry a
+                # name. Binary files simply will not match; errors="replace" keeps them from raising.
+                _rel1 = os.path.relpath(os.path.join(_dp, _f), _root)
+                _txt = io.open(os.path.join(_dp, _f), encoding="utf-8", errors="replace").read()
+                _leaks += ["%s:%s" % (_rel1, _w) for _w in _needles if _w in _txt]
+                # AND the string constants as the PARSER sees them, which is not the same thing.
+                # `"ghost-" "lane"` is folded into a single constant before any code runs, so the
+                # joined name exists in the program and appears nowhere in the text -- invisible to
+                # the scan above and to the structural check, which has no `+` to find. Attacking the
+                # first version of this fix is what surfaced it. Text still matters on its own:
+                # comments are not constants, and a name in a comment is what started all of this.
+                if _f.endswith(".py"):
+                    try:
+                        for _nd in _ast0.walk(_ast0.parse(_txt)):
+                            if _is_lit(_nd):
+                                _leaks += ["%s:%s" % (_rel1, _w) for _w in _needles if _w in _nd.value]
+                    except SyntaxError:
+                        pass
+        ck("no string from the supplied private-name list survives in the publish tree",
+           not _leaks, _leaks[:8])
+    else:
+        print("  NOTE  private-name scan NOT RUN: no TEAMLINE_DEID_LIST. It is not a pass. The "
+              "structural check above ran and needs no list.")
 
     # ---- the log must not claim about the HISTORY what the history does not support --------------
     # D-L1 asserted "The history is clean: the real team names never entered it." That was FALSE. The
@@ -321,9 +387,11 @@ async def run(tmp):
     #
     # This links a REPOSITORY fact to a DOCUMENTATION obligation, the same shape as C-L2. It does not
     # demand a clean history -- rewriting that is the owner's decision, not a test's -- only that the
-    # log never claim one the commits do not support. Needles are assembled from fragments: spelled
-    # out, this check would itself write the private names into the tree it is guarding.
-    _terms = tuple(a + b for a, b in (("project", "-one"), ("proje", "ct-two"), ("proje", "ct-three")))
+    # log never claim one the commits do not support. The terms come from the SAME external list as
+    # the tree scan above -- they used to be spelled here in fragments, which wrote the three private
+    # team names into the very tree this check guards, after a history rewrite had removed them from
+    # every commit. A name absent from the history and present in the working tree is still published.
+    _terms = tuple(_needles)
 
     def _in_history(term):
         """True / False / None, where None means 'could not look' -- never silently False."""
@@ -358,10 +426,18 @@ async def run(tmp):
     _ms = _re0.findall(r"HISTORY STATUS \(checked by the suite\): (CLEAN|CARRIES PRIVATE NAMES)", _logtxt)
     _stated = _ms[0] if len(_ms) == 1 else None
     _measured = "CARRIES PRIVATE NAMES" if _dirty else "CLEAN"
-    ck("the fix log's stated history status matches the commits, in both directions",
-       bool(_stated) and _stated == _measured and not (_blind and _has_git),
-       ("could not search the history of a real checkout: %s" % _blind) if (_blind and _has_git)
-       else "log states %r, commits say %r" % (_stated, _measured))
+    # WITH NO TERMS THERE IS NOTHING TO MEASURE, and an unmeasured history reads CLEAN -- which would
+    # make this check pass vacuously, guarding the most expensive claim in the log while knowing
+    # nothing. That is the same failure the `_blind` handling above exists to prevent, arriving by a
+    # different route. So it does not run, and says so.
+    if not _terms:
+        print("  NOTE  history-status check NOT RUN: no TEAMLINE_DEID_LIST, so there is nothing to "
+              "search the commits for. It is not a pass.")
+    else:
+        ck("the fix log's stated history status matches the commits, in both directions",
+           bool(_stated) and _stated == _measured and not (_blind and _has_git),
+           ("could not search the history of a real checkout: %s" % _blind) if (_blind and _has_git)
+           else "log states %r, commits say %r" % (_stated, _measured))
 
     # ---- the verification must not claim more than it verifies -----------------------------------
     # The perturbation runner is this repository's strongest evidence, and its verdict read "every

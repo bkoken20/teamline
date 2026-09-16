@@ -18,6 +18,8 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -38,12 +40,28 @@ def write(path, data):
         fh.write(data)
 
 
-def run_suite(which):
+def run_suite(which, needle=""):
     """Return the suite's stdout. Its exit code is not the signal here -- we want to know whether ONE
-    named check failed, and a suite can be red for an unrelated reason."""
-    p = subprocess.run([sys.executable, SUITES[which]], capture_output=True, text=True,
-                       encoding="utf-8", errors="replace", cwd=ROOT, timeout=300)
-    return (p.stdout or "") + (p.stderr or "")
+    named check failed, and a suite can be red for an unrelated reason.
+
+    `needle` supplies the de-identification scan's list for this run. The list lives OUTSIDE the
+    repository (that was R-12), so a claim about that scan has to hand it one -- and the needle is
+    generated fresh per run rather than written down here, because a needle spelled in this file
+    would already be in the tree the scan walks, and the check would go red with the perturbation
+    doing nothing at all. A claim that fires either way proves nothing."""
+    env, tmp = dict(os.environ), ""
+    if needle:
+        fd, tmp = tempfile.mkstemp(prefix="deid-", suffix=".txt")
+        with io.open(fd, "w", encoding="utf-8") as fh:
+            fh.write(needle + "\n")
+        env["TEAMLINE_DEID_LIST"] = tmp
+    try:
+        p = subprocess.run([sys.executable, SUITES[which]], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", cwd=ROOT, timeout=300, env=env)
+        return (p.stdout or "") + (p.stderr or "")
+    finally:
+        if tmp:
+            os.unlink(tmp)
 
 
 def failed_checks(out):
@@ -74,8 +92,11 @@ def main():
                             % src.count(p["find"])))
                 print("  AMBIG  %-12s %s" % (p["id"], p["must_fail"][:70]))
                 continue
-            write(path, src.replace(p["find"], p["repl"]).encode("utf-8"))
-            out = run_suite(p["suite"])
+            # A claim about the de-identification scan gets a one-off needle, substituted into its
+            # payload: `{NEEDLE}` in the repl, the same string in the list handed to the suite.
+            needle = "zz-" + uuid.uuid4().hex[:12] if "{NEEDLE}" in p["repl"] else ""
+            write(path, src.replace(p["find"], p["repl"].replace("{NEEDLE}", needle)).encode("utf-8"))
+            out = run_suite(p["suite"], needle)
             fails = failed_checks(out)
             fired = [f for f in fails if p["must_fail"] in f]
             if fired:

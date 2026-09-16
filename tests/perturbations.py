@@ -140,12 +140,14 @@ PERTURBATIONS = [
 
     dict(id="D-L1", suite="e2e", file="teamline/switchboard_broker.py",
          find="Measured in production: one lane held 5 holders,",
-         # assembled from fragments for the same reason the check itself is: the scan reads this
-         # file's TEXT, so a literal needle written here would make the check red for ever.
-         repl="Measured 2026-09-08: beta/one-" + "analysis held 5,",
-         must_fail="no lane name or deployment phrase from the private deployment survives in the publish tree",
-         why="puts back a lane name of the private deployment, which is the state the de-identifying "
-             "rename left four comments in -- the team relabelled, the lane name untouched"),
+         # `{NEEDLE}` is filled in by the runner with a string generated for this run, and the same
+         # string is the list handed to the suite. It used to be a real lane name assembled from two
+         # literals, because the scan reads this file's text -- which is R-12: the needle was in the
+         # published tree either way, and joining two literals is one line of `ast`.
+         repl="Measured 2026-09-08: beta/{NEEDLE} held 5,",
+         must_fail="no string from the supplied private-name list survives in the publish tree",
+         why="puts a name from the list back into a shipped comment, which is the state the "
+             "de-identifying rename left four comments in -- the team relabelled, the lane untouched"),
 
     dict(id="C-L1a", suite="e2e", file="README.md",
          find="| `tests/` | three suites and a headless page probe. |",
@@ -199,14 +201,22 @@ PERTURBATIONS = [
 
     dict(id="V-2", suite="e2e", file="teamline/switchboard_broker.py",
          find="# reconnect stagger after a broker or host restart",
-         # assembled from fragments: spelled out, this file would carry the phrase it tests for, and
-         # the check scans every file including this one.
-         repl="# reconnect stagger after a broker/always-on " + "host restart",
-         must_fail="no lane name or deployment phrase from the private deployment survives in the publish tree",
-         why="puts back a phrase naming the private deployment's own machine. It survived the "
-             "lane-name pass because it is a PHRASE, not an identifier -- and it read, to a stranger, "
-             "as a reference to infrastructure they were assumed to know and which is defined nowhere "
-             "in this repository"),
+         # A PHRASE with spaces, not an identifier -- that distinction is the point of this claim, and
+         # the runner's needle is substituted into the middle of one. Same change as D-L1 above: the
+         # phrase used to be spelled here in fragments, which published it (R-12).
+         repl="# reconnect stagger after a broker or the {NEEDLE} host restart",
+         must_fail="no string from the supplied private-name list survives in the publish tree",
+         why="puts back a phrase naming a specific machine. It survived the lane-name pass because it "
+             "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
+             "infrastructure they were assumed to know and which is defined nowhere in this repository"),
+
+    dict(id="R-12", suite="e2e", file="teamline/teamline_broker.py",
+         find='SECRET_FIELDS = ("sid", "session_id")',
+         repl='SECRET_FIELDS = ("s" + "id", "session_id")',
+         must_fail="no file in this tree assembles a string out of literal fragments",
+         why="reintroduces the idiom that published the private names. The perturbation changes no "
+             "behaviour at all -- the tuple is identical -- so the only thing that can go red is the "
+             "structural check, which is the point: the mechanism is the defect, not the value"),
 
     dict(id="R-2-row", suite="e2e", file="teamline/switchboard.py",
          find='call_id=(self._call_of(e["ext"]) or {}).get("call_id"),',

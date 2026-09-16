@@ -743,6 +743,11 @@ live search of the history, and fails if the two disagree in *either* direction.
 prose cannot carry that claim — the paragraphs around it describe the history's past in the past
 tense, and a check reading prose cannot tell a description from an assertion about now.
 
+⚑ Since R-12 the names being searched for are **not in this repository**, so that comparison runs
+only where the list is supplied — the maintainer's pre-publication gate. On a clone without it the
+check prints `NOT RUN` rather than passing, because an unmeasured history reads clean and would have
+made the check pass vacuously while guarding the most expensive claim in this log.
+
 **RESOLVED, by rewriting the history on the repository owner's instruction.** Every commit was
 rewritten so that the three names are replaced by the public vocabulary this repository already uses
 for its teams, in blobs and in commit messages alike. Upper case only, which is all that was there; a
@@ -767,9 +772,14 @@ de-identification check's own comment carries no example.)*
 holders* rather than a named lane. Numbered `D-L1`, not a queue id, for the reason given in B-L1.
 
 **The check.** No identifier from the private deployment may appear anywhere in the tree. Its needles
-are assembled from string fragments so that the check can scan **its own file** — a denylist written
-out literally reports itself, and then the only way to keep the suite green is to stop scanning the
-files most likely to carry a leak.
+were assembled from string fragments so that the check could scan **its own file** — a denylist
+written out literally reports itself, and then the only way to keep the suite green is to stop
+scanning the files most likely to carry a leak.
+
+⚠ **Superseded by R-12.** Splitting each name across two literals let the check scan its own file and
+published the names anyway: a reader rejoins them in one line of `ast`, and thirteen of them were
+sitting in this tree — including three that a history rewrite had just removed from every commit. The
+list now comes from **outside the repository**; what ships is a check that carries no list at all.
 
 It caught the author immediately: the explanatory comment above it quoted one of the leaked names as
 an example, and the check flagged it. The comment now says why no example is quoted.
@@ -782,6 +792,70 @@ The scan now reads every file outside the excluded directories.
 
 **A limit.** The needle list is a denylist of names known to have leaked. It cannot catch a private
 identifier nobody has thought of. It is a regression guard, not a proof of de-identification.
+
+---
+
+## R-12 — the list of names that must not be published was published, in the check that hides them
+
+**Severity:** high in this repository's own terms, whatever a general reader would grade it. The
+names were the private deployment's lanes, its machine and its three teams — and the three team names
+had been removed from every commit by a history rewrite the day before, while sitting in the working
+tree the whole time. A name absent from the history and present in the tree is published.
+
+**What was wrong.** D-L1's check scans every file for a list of private names. A list written out
+literally matches itself, so each name was split across two string literals and rejoined at runtime.
+The log said so plainly and never called it obfuscation — but it was still the whole list, in the
+published tree, and rejoining it is one line of `ast`:
+
+```
+    reassembled from adjacent string literals in the published tree:
+      tests/test_switchboard_e2e.py :322   <eight lane names>
+      tests/test_switchboard_e2e.py :328   <two phrases naming a machine and a network>
+      tests/test_switchboard_e2e.py :359   <the three team names>
+      tests/perturbations.py        :145   <a lane name, inside a perturbation payload>
+    13 strings, with no knowledge of any name beforehand.
+```
+
+**The test that should have caught it.** The de-identification check itself, and it was green. It
+searches for each name as a contiguous string, and no name is contiguous anywhere — **including in
+its own needle list.** It was built blind to exactly the encoding it uses. A check that cannot see
+its own leak is not a weak check, it is the wrong check.
+
+**The fix.** Two halves, because no single check can do both jobs.
+
+*A structural check, which needs no list and therefore ships.* No file in this tree may assemble a
+string out of literal fragments. It reads the syntax rather than the text, so it is about the
+mechanism rather than about any particular name, and it cannot be defeated by choosing different
+words. It is the check D-L1's could not be.
+
+*A content scan, whose list comes from outside.* `TEAMLINE_DEID_LIST` names a file of strings that
+must not appear. There is deliberately **no default path** — a default would name the machine it
+points at. With no list the scan does not run and prints `NOT RUN`; it never reports a pass it did
+not earn. The maintainer's pre-publication gate supplies the real list, which is where a list of
+private names belongs.
+
+**Attacking the fix found a real hole in it.** The same name was planted six ways. The structural
+check caught `+`, `"".join`, `%` and an f-string smuggling a literal; the content scan caught the
+name written whole. **Implicit concatenation — `"ghost-" "lane"` — got through both**: the parser
+folds it into a single constant before anything runs, so the joined name exists in the program and
+appears nowhere in the file's text, and there is no `+` for the structural check to find. It is also
+the one idiom that happens by accident, whenever a long string is wrapped across two lines. The
+content scan now reads the string constants **as the parser sees them** as well as the raw text —
+the text still matters on its own, because comments are not constants, and a name in a comment is
+what started all of this. All six idioms are now caught by one check or the other.
+
+**What this does NOT claim.** It is not a defence against someone determined to hide a name: a string
+can be built at runtime in ways no parser can enumerate, and anyone who can commit to this repository
+can do so. It forbids the idioms that publish a name *by accident* or *by well-meant cleverness*,
+which is what happened here, and it names the boundary rather than implying a proof.
+
+**The checks.** *"no file in this tree assembles a string out of literal fragments"* — perturbed by
+rewriting a two-element tuple as `("s" + "id", …)`, a change with **no behavioural effect at all**, so
+the structural check is the only thing that can go red. And *"no string from the supplied
+private-name list survives in the publish tree"*, which D-L1's and V-2's claims now pin: the runner
+generates a one-off needle per run and hands it to the suite, because a needle written down in the
+claims file would already be in the tree the scan walks — and a claim that fires whether or not the
+perturbation was applied proves nothing.
 
 ---
 
@@ -1020,7 +1094,8 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 154 of the 180 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 154 of the 181 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |
 

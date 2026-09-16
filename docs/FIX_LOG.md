@@ -1439,6 +1439,57 @@ that actually happens, where a variable is moved and the configuration section i
 
 ---
 
+## R-25 — retirement was timed from the wrong event, and a replaceable state was missing
+
+**Severity:** low, and both halves are the kind of thing a reader checks rather than assumes.
+
+**What was wrong.** Two claims.
+
+*The clock.* Both the README and `PROTOCOL` said a lane is retired after **"GONE for 10 minutes"**.
+`gone_since` is stamped when the feed **drops**, and the sweep retires at `gone_since +
+GONE_RETIRE_S` — so it is ten minutes after the drop, which is eight and a half minutes after the
+lane reads GONE. Measured on the clock:
+
+```
+  the feed dropped at            t+0 s
+  the lane first reads GONE at   t+90 s
+  it is retired at               t+600 s      (GONE_RETIRE_S, counted from the DROP)
+  the gap between the two        8.5 minutes, not 10
+```
+
+The operator page had it right all along, which is the tell worth recording: three descriptions of
+one constant, and the two in the documents agreed **with each other** rather than with the code.
+
+*The states.* `PROTOCOL` said re-registering replaces "a GONE or STALE holder". `register()` refuses
+only a **LIVE** one, so every other hygiene value is replaceable — including `UNREACHABLE`, which is
+what a lane reads when it registered and holds no feed, and which the same document lists in its own
+hygiene table two lines above.
+
+**The test that should have caught it.** None. Both are constants-versus-prose, and the suite checked
+neither; `C-L1` had established the principle for counts and stopped at the counts it thought of.
+
+**The fix.** Both documents time retirement from the drop and say what the gap from GONE actually is.
+The replace rule is stated as the code states it — *anything that is not LIVE* — and names all three,
+with a note that `UNREACHABLE` is the easiest to reach by accident.
+
+**The check computes what each phrasing implies, rather than looking for words.** "GONE for N minutes"
+implies the silence window plus N; "N minutes after the feed drops" implies N. Either is compared with
+the constant, so a document may say it in whatever words it likes and still be wrong only if it is
+wrong. Its first version read the window only *backwards* from the number and mis-read a row that
+names GONE earlier in the same cell for an unrelated reason — it reads both sides now.
+
+**The walk disproved a correction, and the walk was what was wrong.** Testing the `UNREACHABLE` half
+against a state machine built with defaults showed a feedless lane reading `LIVE` and the
+re-registration refused — an apparently clean refutation. `UNREACHABLE` exists only when
+`require_feed` is set, and the shipped broker sets it. The walk now constructs the state machine the
+way the broker does, which is the only construction whose behaviour anyone is entitled to describe.
+Third time today that a reproduction, not a finding, was the thing at fault.
+
+**The checks.** `R-25-timing` restores the clock started from the wrong event. `R-25-states` drops
+`UNREACHABLE` back out of the replaceable list.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1448,7 +1499,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 158 of the 192 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 160 of the 194 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

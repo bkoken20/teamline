@@ -105,10 +105,11 @@ than forbidding the idea.
 | STALE | nothing for 2 hours |
 | GONE | feed silent for 90 seconds |
 | UNREACHABLE | registered but holding no feed — nothing can deliver to it |
-| retired | GONE for 10 minutes, or idle for 24 hours; the lane disappears from the directory |
+| retired | 10 minutes after the feed drops (which is 8.5 minutes after it reads GONE, not 10), or idle for 24 hours; the lane disappears from the directory |
 
-Re-registering a name replaces a GONE or STALE holder. A LIVE one is refused, so two sessions can
-never share a lane.
+Re-registering a name replaces any holder that is not LIVE -- STALE, GONE or UNREACHABLE. Only a
+LIVE one is refused, so two sessions can never share a lane. UNREACHABLE is the easiest of the
+three to reach by accident: it is what a lane reads when it registered and holds no feed.
 
 ## 4. Calls
 

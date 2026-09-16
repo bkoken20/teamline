@@ -170,7 +170,7 @@ genuinely acks. The end-to-end suite pins this.
 | **directory** | every extension, its state, and how old its `now` line is |
 | **call** | ring → answer → lines → hangup, one open call per extension, transcript written |
 | **voicemail** | addressed to one extension, held 7 days, delivered when it is next idle |
-| **hygiene** | LIVE / STALE (2 h) / GONE (feed silent 90 s) / retired (GONE 10 min, or idle 24 h) |
+| **hygiene** | LIVE / STALE (2 h) / GONE (feed silent 90 s) / retired (10 min after the feed drops, or idle 24 h) |
 | **ledger** | every transition is one appended JSON row; the broker replays it on restart |
 
 Two behaviours worth knowing because they surprise people:

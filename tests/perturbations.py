@@ -210,6 +210,22 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-25-timing", suite="e2e", file="docs/PROTOCOL.md",
+         find="| retired | 10 minutes after the feed drops (which is 8.5 minutes after it reads GONE, not 10), ",
+         repl="| retired | GONE for 10 minutes, ",
+         must_fail="both documents time retirement from the same event the code does",
+         why="restores a retirement clock started from the wrong event -- 90 s out, in a constant a "
+             "reader checks. The operator page had it right the whole time, which is how two "
+             "documents came to agree with each other rather than with the code"),
+
+    dict(id="R-25-states", suite="e2e", file="docs/PROTOCOL.md",
+         find="Re-registering a name replaces any holder that is not LIVE -- STALE, GONE or UNREACHABLE.",
+         repl="Re-registering a name replaces a GONE or STALE holder.",
+         must_fail="the contract names every hygiene state a re-registration may replace",
+         why="drops UNREACHABLE from the replaceable states. register() refuses only LIVE, so every "
+             "other hygiene value is replaceable -- and UNREACHABLE is the one a lane sits in when it "
+             "registered and holds no feed"),
+
     dict(id="R-24-doc", suite="e2e", file="README.md",
          find="The broker reads the first five, a",
          repl="The broker reads the first four, a",

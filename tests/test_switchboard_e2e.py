@@ -416,6 +416,54 @@ async def run(tmp):
     ck("the security section names every surface that needs no team name",
        not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
 
+    # ---- retirement is timed from the DROP, and the docs timed it from GONE -----------------------
+    # Both documents said a lane is retired after "GONE for 10 minutes". `gone_since` is stamped when
+    # the feed DROPS, and the sweep retires at gone_since + GONE_RETIRE_S -- so it is 10 minutes after
+    # the drop, which is 8.5 minutes after the lane reads GONE. The operator page had it right all
+    # along, which is the tell: three descriptions of one constant, and the two in the documents
+    # agreed with each other rather than with the code.
+    #
+    # Checked by computing what each phrasing IMPLIES and comparing that with the constant, rather
+    # than by looking for particular words: "GONE for N minutes" means the silence window plus N,
+    # "N minutes after the feed drops" means N.
+    import switchboard as _SBr
+    _sbs = io.open(os.path.join(PKG, "switchboard.py"), encoding="utf-8").read()
+    _hyg = _sbs.split("def _hygiene")[1].split("\n    def ")[0]
+    _states = set(_re0.findall(r'return "([A-Z]+)"', _hyg))
+    _silence = int(_re0.search(r"feed_gone_s\s*=\s*(\d+)", _sbs).group(1))   # the default in __init__
+    _timing = []
+    for _doc, _txt7 in (("README.md", _readme0()),
+                        ("docs/PROTOCOL.md", io.open(os.path.join(_root, "docs", "PROTOCOL.md"),
+                                                     encoding="utf-8").read())):
+        for _line in _txt7.splitlines():
+            if "retire" not in _line.lower():
+                continue
+            _mm = _re0.search(r"(\d+)\s*min", _line)
+            if not _mm:
+                continue
+            # The window is read on BOTH sides of the number: a row can name GONE earlier in the same
+            # cell for an unrelated reason, and looking only backwards made one line read as though
+            # its clock started there. "drops" is decisive when present, because it says outright what
+            # the clock starts from; "GONE for N minutes" starts where the lane READS gone, which is
+            # the silence window later.
+            _win = (_line[:_mm.start()][-48:] + _line[_mm.end():][:48])
+            _from_gone = "GONE" in _win and "drop" not in _win.lower()
+            _implied = int(_mm.group(1)) * 60 + (_silence if _from_gone else 0)
+            if _implied != _SBr.GONE_RETIRE_S:
+                _timing.append("%s: %r implies %ss from the drop, code retires at %ss"
+                               % (_doc, _line.strip()[:60], _implied, _SBr.GONE_RETIRE_S))
+    ck("both documents time retirement from the same event the code does",
+       not _timing, _timing)
+
+    # Re-registering refuses only a LIVE holder, so every other hygiene value is replaceable. The
+    # contract named two of the three, and the missing one is the state a lane sits in when it has
+    # registered but holds no feed -- the most replaceable of all.
+    _repl = " ".join(s for s in io.open(os.path.join(_root, "docs", "PROTOCOL.md"),
+                                        encoding="utf-8").read().splitlines() if "replace" in s.lower())
+    _missing = sorted(s for s in _states - {"LIVE"} if s not in _repl)
+    ck("the contract names every hygiene state a re-registration may replace",
+       not _missing, {"code says replaceable": sorted(_states - {"LIVE"}), "not named": _missing})
+
     # ---- the configuration prose must match which side actually reads each variable ---------------
     # "The broker reads the first four, a client reads the last two" -- of a table with seven rows,
     # five of which the broker reads. A reader follows that sentence when deciding what to set where.

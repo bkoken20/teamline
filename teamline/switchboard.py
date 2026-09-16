@@ -332,7 +332,13 @@ class Switchboard:
         elif ev == "delivered":
             self._delivered.add(r["msg_id"])
             self._outbox = [e for e in self._outbox if e["id"] != r["msg_id"]]
-            if r.get("session_id") not in ("ws", "wait", "x"):
+            # `host` says a real agent session accepted this, so the caller may be told its ring
+            # landed. It is a FIELD and not a value inside session_id because session_id arrives from
+            # the client's ack (switchboard_broker.py, the `ack` branch): a client that sent one of
+            # the marker strings could silence the caller's signal, and one of those markers existed
+            # only in the tests. Rows written before `host` existed fall back to the marker test --
+            # the two markers that ship, never the tests' own, which no real ledger contains.
+            if r.get("host", r.get("session_id") not in ("ws", "wait")):
                 for c in self._calls.values():           # a ring landed on the peer's host: tell the caller
                     if c["state"] == "RINGING" and c.get("ring_msg_id") == r["msg_id"]:
                         busy = self._ext.get(c["callee"], {}).get("running")
@@ -848,10 +854,14 @@ class Switchboard:
         e = self._ext.get(ext)
         return bool(e and e["running"])
 
-    def mark_delivered(self, msg_id, session_id):
+    def mark_delivered(self, msg_id, session_id, host=False):
+        """host: a real agent session accepted this message. Only the broker's ack path knows that,
+        and it passes it as an argument -- session_id is whatever the client's ack carried, so it
+        cannot be allowed to decide anything. Defaults False: a caller that does not say loses the
+        caller's ring_delivered signal, which the ring timer covers, rather than fabricating one."""
         if msg_id in self._delivered:
             return False
-        self._commit("delivered", msg_id=msg_id, session_id=str(session_id))
+        self._commit("delivered", msg_id=msg_id, session_id=str(session_id), host=bool(host))
         return True
 
     def mark_failed(self, msg_id, error):
@@ -879,7 +889,7 @@ class Switchboard:
         finally:
             self._waiters[ext] = None
             for ev in buf:
-                self._commit("delivered", msg_id=ev["id"], session_id="wait")
+                self._commit("delivered", msg_id=ev["id"], session_id="wait", host=False)
             self._commit("wait_close", ext=ext, received=len(buf))
         return buf
 

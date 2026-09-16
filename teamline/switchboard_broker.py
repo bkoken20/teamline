@@ -81,7 +81,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
             if acking(ev["to"]):
                 awaiting[ev["id"]] = (time.time(), ev["to"])
             else:
-                sb.mark_delivered(ev["id"], "ws")
+                sb.mark_delivered(ev["id"], "ws", host=False)   # down the socket; no session said it took it
         except Exception as e:
             sb.mark_failed(ev["id"], f"ws: {e}")
 
@@ -170,7 +170,10 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
                 return
             awaiting.pop(mid, None)
             if m.get("accepted") is True:
-                sb.mark_delivered(mid, str(m.get("session_id") or sb.session_of(ext) or "feed"))
+                # host=True: an ACK is a real session saying it took the message, which is the one
+                # case where the caller may be told its ring landed. The id below is recorded for the
+                # ledger only -- it comes from the client, so it decides nothing.
+                sb.mark_delivered(mid, str(m.get("session_id") or sb.session_of(ext) or "feed"), host=True)
             else:
                 sb.mark_failed(mid, f"refused by watcher: {m.get('reason') or 'accepted=false'}")
                 retry_at[mid] = time.time() + backoff_s

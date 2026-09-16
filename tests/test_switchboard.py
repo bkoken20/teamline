@@ -288,7 +288,7 @@ def main():
     se.set_running("beta", {"s-slow": True})
     r = se.call("alpha", "q", "beta/slow", "s", "o")
     ring = [e for e in se.pending_for("beta/slow") if e["kind"] == "ring"][0]
-    se.mark_delivered(ring["id"], "s-slow")
+    se.mark_delivered(ring["id"], "s-slow", host=True)     # a watcher ack: a real session took it
     ev = [e for e in se.pending_for("alpha/q") if e["kind"] == "ring_delivered"]
     ck("the caller gets a machine 'ring delivered to the peer host, peer mid-turn' signal (no model action)",
        len(ev) == 1 and "mid-turn" in ev[0]["text"], se.pending_for("alpha/q"))
@@ -309,7 +309,7 @@ def main():
     se.answer("beta", "slow")
     for x in ("beta/slow", "alpha/q"):
         for e in se.pending_for(x):
-            se.mark_delivered(e["id"], "x")
+            se.mark_delivered(e["id"], "sess-D7")
     ce.t += 5 * M + 1
     se.tick()
     n_callee = [e for e in se.pending_for("beta/slow") if e["kind"] == "nudge"]
@@ -341,12 +341,12 @@ def main():
     sr_.register("beta", "p", now="n", session_id="s-p"); sr_.register("alpha", "c", now="n", feed=True)
     sr_.set_running("beta", {"s-p": False})
     rc = sr_.call("alpha", "c", "beta/p", "s", "o")
-    sr_.mark_delivered([e for e in sr_.pending_for("beta/p") if e["kind"] == "ring"][0]["id"], "s-p")
+    sr_.mark_delivered([e for e in sr_.pending_for("beta/p") if e["kind"] == "ring"][0]["id"], "s-p", host=True)
     sr_.answer("beta", "p"); sr_.hangup("alpha", "c", "done")
     for x in ("beta/p", "alpha/c"):
         for e in sr_.pending_for(x):
             if e["kind"] != "ring_delivered":            # live: the signal was never delivered before the restart
-                sr_.mark_delivered(e["id"], "x")
+                sr_.mark_delivered(e["id"], "sess-D7")
     SBr2, sr2, _ = fresh(os.path.dirname(sr_.ledger_path), cr)
     ck("replay does NOT resurrect a ring_delivered signal for a call that has since ended (seen live: two stale pushes)",
        not any(e["kind"] in ("ring_delivered", "nudge") for e in sr2.pending_for("alpha/c")), sr2.pending_for("alpha/c"))
@@ -566,7 +566,7 @@ def main():
     rc = sd.call("alpha", "caller", "beta/callee", "subject", "opening")
     sd.answer("beta", "callee")
     for ev in sd.pending_for("alpha/caller"):      # the caller drains what it has so far
-        sd.mark_delivered(ev["id"], "x")
+        sd.mark_delivered(ev["id"], "sess-D7")
     cd.t += 6 * M
     # One tick does both: 5 minutes of silence nudges the parties, and the callee's watcher having
     # gone quiet past feed_gone_s ends the call as peer_lost. So the nudge is queued and the call it
@@ -608,10 +608,10 @@ def main():
     first = [e for e in sn2.pending_for("alpha/aa") if e["kind"] == "nudge"]
     ck("a silent call nudges the first time", len(first) == 1, first)
     for ev in sn2.pending_for("alpha/aa") + sn2.pending_for("alpha/bb"):
-        sn2.mark_delivered(ev["id"], "x")
+        sn2.mark_delivered(ev["id"], "sess-D7")
     sn2.say("alpha", "bb", "still here")                 # the stall breaks, the counter resets
     for ev in sn2.pending_for("alpha/aa"):
-        sn2.mark_delivered(ev["id"], "x")
+        sn2.mark_delivered(ev["id"], "sess-D7")
     cn2.t += 6 * M
     sn2.tick()
     second = [e for e in sn2.pending_for("alpha/aa") if e["kind"] == "nudge"]
@@ -705,7 +705,7 @@ def main():
         s3.answer("beta", "a")
         for x in ("beta/a", "alpha/b"):
             for e in s3.pending_for(x):
-                s3.mark_delivered(e["id"], "x")
+                s3.mark_delivered(e["id"], "sess-D7")
         t = asyncio.ensure_future(s3.wait("beta", "a", 5))
         await asyncio.sleep(0.05)
         s3.say("alpha", "b", "hello wait")

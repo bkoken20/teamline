@@ -204,6 +204,15 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-19", suite="e2e", file="teamline/switchboard.py",
+         find='            if r.get("host", r.get("session_id") not in ("ws", "wait")):',
+         repl='            if r.get("session_id") not in ("ws", "wait", "x"):',
+         must_fail="a watcher cannot silence the caller's ring_delivered by acking with an internal marker string",
+         why="decides the caller's signal from a string the CLIENT sent in its ack instead of from the "
+             "row's own host field. Any watcher can then silence the caller by acking with one of the "
+             "three marker strings -- and one of the three, 'x', was never written by anything but the "
+             "tests, so shipped code was honouring a test fixture"),
+
     dict(id="R-17", suite="unit", file="teamline/switchboard.py",
          find='                              f"variant of the name, cannot work. Ask the operator to enable it.")',
          repl='                              f"variant of the name; teams are {TEAMS}.")',

@@ -82,6 +82,7 @@ async def run(tmp):
     delivered = {"deep": [], "ruler": []}          # what "session.prompt" would have received
     running = {"deep": True, "ruler": False}
     ack_mode = {"deep": True, "ruler": True}        # accepted flag the watcher answers with
+    ack_sid = {"deep": "sess-A", "ruler": "sess-B"}  # session id it puts in the ack -- the CLIENT chooses this
     parts = {}
 
     async def watcher(name, session_id):
@@ -105,7 +106,7 @@ async def run(tmp):
                     else:
                         text = ev["text"]
                     delivered[name].append(dict(id=ev["id"], kind=ev["kind"], text=text, mode="steer" if running[name] else "queue"))
-                    await ws.send(json.dumps({"ack": ev["id"], "session_id": session_id, "accepted": ack_mode[name]}))
+                    await ws.send(json.dumps({"ack": ev["id"], "session_id": ack_sid[name], "accepted": ack_mode[name]}))
             finally:
                 pt.cancel()
     wt = {"deep": asyncio.create_task(watcher("deep", "sess-A")), "ruler": asyncio.create_task(watcher("ruler", "sess-B"))}
@@ -1045,6 +1046,24 @@ async def run(tmp):
     r = await call("alpha", "sw_hangup", ext="writer", summary="depth done")
     ck("hangup writes the transcript", r.get("state") == "IDLE" and os.path.exists(r.get("transcript", "")), r)
     await call("alpha", "sw_hangup", ext="review", summary="ruler done")
+
+    # ---- a CLIENT-CHOSEN string must not decide a broker signal -----------------------------------
+    # `ring_delivered` tells the caller the ring reached the peer's HOST. The state machine decided
+    # that by comparing the delivered row's session_id against a list of marker strings -- and that
+    # value arrives in the watcher's ack, so any watcher could send a marker and silence the caller.
+    # The markers are the broker's own ("ws"), the state machine's ("wait") and, until this was
+    # fixed, one that exists nowhere but the tests ("x"). This acks with the first of the three.
+    ack_sid["deep"] = "ws"
+    _rd_before = sum(1 for e in feeds["writer"] if e.get("kind") == "ring_delivered")
+    await call("alpha", "sw_call", ext="writer", peer="beta/deep", subject="spoof", opening="o")
+    await asyncio.sleep(0.9)
+    _rd_after = sum(1 for e in feeds["writer"] if e.get("kind") == "ring_delivered")
+    ck("a watcher cannot silence the caller's ring_delivered by acking with an internal marker string",
+       _rd_after > _rd_before, dict(before=_rd_before, after=_rd_after,
+                                    acked_as=ack_sid["deep"], feed_tail=feeds["writer"][-2:]))
+    ack_sid["deep"] = "sess-A"
+    await call("beta", "sw_answer", ext="deep")
+    await call("alpha", "sw_hangup", ext="writer", summary="spoof done")
 
     # ---- unreachable: sw_register without a feed --------------------------------------------------
     r = await call("beta", "sw_register", ext="lonely", now="no watcher", session_id="sess-L")

@@ -2114,6 +2114,67 @@ naming the disclosure.
 
 ---
 
+## R-19 — a string only the tests ever wrote decided a signal in shipped code
+
+**Severity:** low in effect — the worst a client achieves is silencing its own caller's
+`ring_delivered` — and worth the entry for the mechanism, which was a value from the wire steering a
+branch in the state machine.
+
+**What was wrong.** When a message is marked delivered, the state machine decided whether to tell the
+**caller** that its ring reached the peer's host by looking at the delivery's `session_id`:
+
+```
+  if r.get("session_id") not in ("ws", "wait", "x"):     # ... tell the caller
+```
+
+Three strings suppressed the signal. `"ws"` is the broker's own marker for a frame pushed down a
+socket, `"wait"` the state machine's for a message handed to an `sw_wait` waiter — and `"x"` is what
+the unit suite passed to `mark_delivered`, six times. Nothing that ships has ever written it.
+
+**And the value comes from the client.** The ack path recorded
+`str(m.get("session_id") or ...)`, where `m` is the JSON a watcher sent. So any watcher could ack a
+ring — settling the message, so nothing is re-pushed — while sending one of the three markers, and
+the caller was never told. Measured, all five values through a real ring: a real id and `feed`
+signalled; `ws`, `wait` and `x` were silent.
+
+**Why the suggested direction was not enough.** The finding proposed a private constant the wire
+cannot produce, or real-looking ids in the tests. Either removes `"x"`. Neither removes `"ws"` or
+`"wait"`, which reach the discriminator through the same client field — the defect would have moved,
+not gone.
+
+**The fix: the source decides, not the string.** `mark_delivered` takes `host`, a parameter no wire
+format can set, and the row records it. The broker's **ack** path — the one case where a real session
+has said it took the message — passes `host=True`; the socket push and the waiter pass `host=False`.
+`session_id` is still recorded, because the ledger is the product and an operator wants to know which
+session accepted a ring; it simply no longer decides anything.
+
+**The alternative, and the number that killed it.** The other design sanitises the client's string at
+the ack site: if it matches a marker, ignore it. One guard, one site, no new field. It loses on
+**D2** — correctness would live in each caller remembering to sanitise. There are three call sites of
+`mark_delivered` today and nothing stopping a fourth from passing a raw wire value: that design
+leaves 1 of 3 sites carrying the obligation and 0 mechanisms enforcing it, against 0 and 1 for the
+parameter, whose default is the safe answer.
+
+**Old ledgers.** Rows written before `host` existed fall back to the marker test — `("ws", "wait")`,
+the two that ship, never the tests' own. A replay of an existing ledger therefore reads exactly as it
+did, and the test sentinel is gone from shipped code rather than preserved in a compatibility branch.
+Verified by replay: the same ledger rebuilds the same pending events, live and replayed.
+
+**What the tests had to say out loud.** Two unit checks were simulating a host acceptance by passing
+a real-looking string, and read the signal it produced; they now say `host=True`. The other six
+passed `"x"` to suppress the signal — suppression is the default now, so the string carries no
+meaning, and swapping it for an ordinary-looking id changed nothing in the suite. That is the
+evidence the sentinel is dead, not an argument that it is.
+
+**The check.** It runs at the **wire**, not against the state machine: a watcher acks a real ring with
+`"ws"`, and the caller's feed must still receive `ring_delivered`. `R-19` puts the string test back;
+the check goes red.
+
+**The limit, stated.** A watcher that never acks at all still produces no signal. That is silence
+rather than a spoof, and the ring timer covers it at 90 s.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

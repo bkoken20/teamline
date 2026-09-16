@@ -210,6 +210,21 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-6-code", suite="e2e", file="teamline/teamline_broker.py",
+         find='Route("/directory", sw["directory_json"]), Route("/healthz", sw["healthz"]),',
+         repl='Route("/directory", sw["directory_json"]), Route("/healthz", sw["healthz"]),\n'
+              '                            Route("/added-later", page),',
+         must_fail="the security section names every surface that needs no team name",
+         why="adds a route whose handler never consults team_of -- one line, the shape this defect "
+             "really takes. The security section cannot know about it, so the check must"),
+
+    dict(id="R-6-doc", suite="e2e", file="README.md",
+         find="| `POST /hook/now` |",
+         repl="| `POST /hook-now-renamed` |",
+         must_fail="the security section names every surface that needs no team name",
+         why="takes one surface out of the security section while the code still serves it. The other "
+             "direction, and the one that rots on its own: A3's list was true when it was written"),
+
     dict(id="V-3", suite="e2e", file="tests/test_switchboard_e2e.py",
          find='"Host": "198.51.100.2:3790"',
          # `{ADDR}` is substituted by the runner. Written out, this file would carry the address the

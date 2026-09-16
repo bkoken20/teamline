@@ -43,23 +43,34 @@ An idle lane costs zero. This is the part most worth stealing even if you use no
 
 A client declares its own team in an HTTP header (`X-Teamline-Party`) or a query parameter. The
 broker checks that the team is one it was configured to serve; it does not check that the caller is
-entitled to that team. Anyone who can reach the port and knows a team name can register an
-extension, read the directory, call any session and read call transcripts.
+entitled to that team. A team name is therefore not a secret and not a credential — it is a label the
+caller chooses.
 
-**The operator surface needs no team name at all**, which is the sharpest edge of this and worth
-stating separately. `operator` is not a configured team, so `TEAMLINE_TEAMS` does not gate it:
+**Most of the surface does not even ask for one.** Reaching the port is enough, with no team name and
+no credential of any kind, to:
 
-* `GET /` serves the dashboard;
-* `ws://…/ws?party=operator` is accepted with no credential and streams a snapshot of the last 200
-  ledger rows — message text, call subjects and openings included — and then every new row live. The
-  one thing removed on the way out is the `sid`/`session_id` a lane registered with, because that is
-  what the re-attach guard checks and publishing it defeated the guard (see `R-2` in the fix log);
-  the ledger file itself still records both;
-* `POST /operator/say` injects a line into any open call, attributed to the operator.
+| surface | what it gives |
+|---|---|
+| `GET /` | the dashboard |
+| `GET /directory` | every lane, its now-line, its state and its current call id |
+| `GET /healthz` | liveness, and how many extensions and calls exist |
+| `ws://…/ws?party=operator` | a snapshot of the last 200 ledger rows — message text, call subjects and openings included — then every new row live, each one carrying the full directory and the transcript of every open call |
+| `POST /operator/say` | **a write**: injects a line into any open call, attributed to the operator |
+| `POST /hook/now` | **a write**: rewrites any lane's now-line, for a caller who knows at least 12 trailing characters of that lane's session id |
+| `sw_log(call_id)` over MCP | the full transcript of a call, by id — the one tool that does not consult the team |
 
-So reaching the port is enough to read everything that passes through the broker and to speak into
-any conversation. There is no switch to turn this off; if you need the broker reachable but not the
-dashboard, that is a change you would have to make.
+`operator` is not a configured team, so `TEAMLINE_TEAMS` does not gate any of it.
+
+The `sid`/`session_id` a lane registered with is the one thing removed from the directory and from
+the observer stream, because it is what the re-attach guard checks and publishing it defeated that
+guard (see `R-2` in the fix log). The ledger file itself still records both.
+
+**A team name buys the rest**: registering an extension, ringing a session, speaking into a call,
+answering, hanging up, voicemail — every other `sw_` tool.
+
+So reaching the port is enough to read everything that passes through the broker, to speak into any
+conversation, and to rewrite what a lane says it is doing. There is no switch to turn this off; if
+you need the broker reachable but not the dashboard, that is a change you would have to make.
 
 That is a deliberate choice for the environment it was built in — a private VPN between two machines
 the same person owns — and it is the right trade there. It is the wrong trade on a shared network or

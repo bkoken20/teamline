@@ -223,6 +223,11 @@ message text, the call subjects and openings this section exists to warn about �
 **The fix.** The security section now states the operator surface separately, lists exactly what it
 exposes, and says plainly that there is no switch to turn it off.
 
+⚠ **Corrected by R-6.** "Lists exactly what it exposes" was true of the three surfaces it looked at
+and false as a claim about the boundary: **six** surfaces need no team name, not three, and two of
+them are writes. The list was hand-written, so nothing made it follow the code; it is derived from
+the source now.
+
 ---
 
 ## A4 — a lane marked down by silence never came back
@@ -1184,6 +1189,61 @@ that address: this file is inside the tree the check walks, so the runner format
 
 ---
 
+## R-6 — the security section's boundary was wrong, and it is the one claim a reader can test
+
+**Severity:** medium by severity, high by position. It is the "read this before deploying" section,
+and the sentence that was wrong is the single security claim in this repository that anyone can check
+with `curl` in ten seconds.
+
+**What was wrong.** The section said a team name is the price of entry: *"anyone who can reach the
+port and knows a team name can register an extension, read the directory, call any session and read
+call transcripts"* — and then listed three surfaces that need no team name, as the exception.
+
+There are **six**, and two of them write. Measured against a running broker with no header of any
+kind:
+
+| surface | what a stranger got |
+|---|---|
+| `GET /directory` | every lane, its now-line, its state, its call id |
+| `GET /healthz` | liveness, and the count of extensions and calls |
+| `POST /hook/now` | **rewrote another lane's now-line** — it read `SET BY A STRANGER` afterwards |
+| `POST /operator/say` | a line injected into an open call |
+| `ws?party=operator` | the ledger, the directory and every open call's transcript |
+| `sw_log(call_id)` | a call transcript, by id — the one MCP tool that never consults the team |
+
+`/hook/now` is the one the section had never mentioned at all, and it is a write. It needs at least
+twelve trailing characters of the target lane's session id, which `/directory` used to publish and no
+longer does (`R-2`) — so the door is narrower than it was, and it is still a door.
+
+**The test that should have caught it.** None. A3 shipped two checks about *particular* surfaces —
+that `operator` is not a configured team, and that the snapshot carries ledger rows — and both still
+pass. Neither says anything about the list being **complete**, and completeness was the claim. A
+hand-written list of what a program exposes starts accurate and decays from the first commit
+afterwards, because adding a route is one line and nothing makes the prose follow.
+
+**The fix.** The section states the real boundary: what reaching the port alone is enough for, as a
+table, with the two writes marked; then what a team name additionally buys; and that a team name is a
+label the caller chooses, not a credential.
+
+The check **derives** the list from the source — every route, and every `sw_` tool, whose
+implementation never mentions `team_of` — and requires the section to name each one. An unknown
+handler is assumed gated, so the check may accuse but never excuse.
+
+**The walk found the mistake the walk exists to find, in the walk itself.** Comparing the derivation
+against a live broker, three gated tools came back as "served" — because they had been called with no
+arguments, MCP rejected the arguments before the tool body ran, and *absence of a refusal* was read
+as success. That is this log's oldest recurring error in a new place. The walk supplies real
+arguments now and reports "inconclusive" when a call never reaches the body, which is the honest
+third answer. With that fixed, the derivation and the live server agree on every conclusive case.
+
+**The checks.** Two, because this rots in both directions and only one of them is obvious. `R-6-code`
+adds a route whose handler never consults `team_of` — one line, which is the shape this defect
+actually takes — and the section cannot know about it. `R-6-doc` removes a surface from the section
+while the code still serves it. A single-direction check would have expired the moment the section
+was correct, which is exactly how `D-L2`'s predecessor stopped firing.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1193,7 +1253,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 154 of the 183 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 154 of the 184 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

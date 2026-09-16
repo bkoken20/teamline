@@ -330,6 +330,36 @@ async def run(tmp):
     ck("no file in this tree assembles a string out of literal fragments",
        not _asm, sorted(set(_asm))[:8])
 
+    # ---- the security section must name every surface that needs no team name ----------------------
+    # The README's one testable security claim is that a team name is the price of entry. It is not:
+    # several surfaces never consult `team_of` at all, and one of them WRITES. A3 enumerated three and
+    # called the list "exactly what it exposes" -- the kind of sentence that rots silently, because
+    # adding a route is a one-line change and nothing made the document follow it.
+    #
+    # So the list is DERIVED from the code rather than restated here: every HTTP route, and every sw_
+    # tool, whose implementation never mentions `team_of`. The same shape as C-L2 -- a repository fact
+    # tied to a documentation obligation -- and it fires on a surface added long after anyone reads
+    # this comment.
+    _bsrc = io.open(os.path.join(PKG, "teamline_broker.py"), encoding="utf-8").read()
+    _wsrc = io.open(os.path.join(PKG, "switchboard_broker.py"), encoding="utf-8").read()
+    _fns = {}
+    for _src in (_bsrc, _wsrc):
+        for _n in _ast0.walk(_ast0.parse(_src)):
+            if isinstance(_n, (_ast0.FunctionDef, _ast0.AsyncFunctionDef)):
+                _fns[_n.name] = _ast0.dump(_n)
+    _open = []
+    for _m in _re0.finditer(r"""Route\(\s*["']([^"']+)["']\s*,\s*(?:sw\[["'](\w+)["']\]|(\w+))""", _bsrc):
+        _path, _fn = _m.group(1), _m.group(2) or _m.group(3)
+        # An unknown handler is assumed GATED: this check may only ever accuse, never excuse.
+        if "team_of" not in _fns.get(_fn, "team_of"):
+            _open.append(_path)
+    _open += [_n for _n, _d in _fns.items() if _n.startswith("sw_") and "team_of" not in _d]
+    _open.append("ws?party=operator")       # accepted before any team is consulted, by construction
+    _sec = _readme0().split("## Security model")[-1].split("\n## ")[0]
+    _unsaid = [s for s in sorted(set(_open)) if s not in _sec]
+    ck("the security section names every surface that needs no team name",
+       not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
+
     # ---- no address in this tree may be a real host ------------------------------------------------
     # This repository was forked out of a private deployment, so an address that COULD be somebody's
     # real machine is a question a reader has no way to answer. RFC 5737 reserves three ranges for

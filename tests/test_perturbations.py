@@ -75,6 +75,18 @@ def failed_checks(out):
     return [ln.split("FAIL", 1)[1].strip() for ln in out.splitlines() if ln.strip().startswith("FAIL")]
 
 
+def ran(out, name):
+    """Did the named check RUN at all -- either way round?
+
+    A perturbation can stop the suite part way through: enough checks run to produce PASS lines, so
+    the run does not look broken, but the one being pinned is never reached. Reported as "the check
+    did NOT fail", that reads as `this check cannot fail` -- the most expensive wrong conclusion this
+    runner can draw, because it is the exact sentence it exists to catch honestly. So ask whether the
+    check appeared at all before judging what it did."""
+    return any(name in ln for ln in out.splitlines()
+               if ln.strip().startswith(("PASS", "FAIL")))
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     only_unit = "--unit" in sys.argv
@@ -135,6 +147,15 @@ def main():
                                      "-- it never ran, so this claim is untested. Fix the spec. Tail: %s"
                             % out.strip().splitlines()[-1][:120] if out.strip() else "no output"))
                 print("  BROKE  %-12s %s" % (p["id"], p["must_fail"][:70]))
+            elif not ran(out, p["must_fail"]):
+                # The suite ran, and this check is not in its output at all -- so the perturbation
+                # stopped the run before reaching it. It says NOTHING about whether the check can
+                # fail, and the branch below would have called it SILENT, which reads as a tautology
+                # that was never demonstrated.
+                bad.append((p["id"], "the suite stopped before this check ran, so the claim is "
+                                     "UNTESTED -- not silent. Narrow the perturbation. Checks that "
+                                     "did fail: %s" % (fails[:2] or "none")))
+                print("  NORUN  %-12s %s" % (p["id"], p["must_fail"][:70]))
             else:
                 bad.append((p["id"], "the check did NOT fail. Either the fix is no longer "
                                      "load-bearing, or the check cannot fail. Other checks that did "

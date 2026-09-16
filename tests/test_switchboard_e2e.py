@@ -416,6 +416,17 @@ async def run(tmp):
     ck("the security section names every surface that needs no team name",
        not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
 
+    # ---- the keepalive rule must say WHICH feed type it applies to ---------------------------------
+    # §2 told every client that 90 seconds of silence marks its lane GONE. The rule is conditional on
+    # the lane carrying a session id, and the feed the README recommends carries none -- so for the
+    # shipped feed type the stated consequence never happens. Both names have to appear in that
+    # paragraph, because a client author reading it has to know which of the two they are.
+    _p2 = io.open(os.path.join(_root, "docs", "PROTOCOL.md"), encoding="utf-8").read()
+    _p2 = _p2.split("## 2.")[-1].split("\n## ")[0]
+    _ka = " ".join(p for p in _p2.split("\n\n") if "ping" in p.lower())
+    ck("the keepalive rule names which of the two feed types it applies to",
+       "session_id" in _ka and "sid" in _ka.replace("session_id", ""), _ka[:160])
+
     # ---- the ring contract must state the bound the code ENFORCES ---------------------------------
     # PROTOCOL said "a ring waits 90 seconds for an answer and then frees the line". Those 90 seconds
     # are IDLE time: the clock only advances while the callee is not mid-turn, and a callee that keeps

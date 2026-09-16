@@ -33,7 +33,12 @@ directory and the timeouts in force.
 A client must:
 
 * print or dispatch every frame it receives — that is the delivery;
-* send `{"ping": 1}` at least every 25 seconds (90 seconds of silence marks the lane GONE);
+* send `{"ping": 1}` at least every 25 seconds. **Which feed you are decides what silence costs you.**
+  A feed registered with `session_id` is marked GONE after 90 seconds of silence, and any call it is
+  in ends. A feed registered with `sid` alone is *never* marked GONE by silence — for that one the
+  socket closing is the only signal, which is why the shipped client can be a process that only
+  receives. **Ping regardless:** a lane's `last_seen` goes stale either way, and a stale `last_seen`
+  is what lets a second holder take the lane out from under you;
 * reconnect after about 2 seconds if the socket drops, indefinitely.
 
 And must not retry these:

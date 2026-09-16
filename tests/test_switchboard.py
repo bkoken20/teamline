@@ -628,6 +628,35 @@ def main():
         ck("sw_wait returns the line and it is not also pending (no double delivery)",
            got and "hello wait" in got[0]["text"] and not s3.pending_for("beta/a"), got)
     asyncio.run(wcase())
+
+    # ---- 15. the silence rule applies to ONE of the two feed types, and the contract said neither
+    # PROTOCOL told every client that 90 seconds of silence marks its lane GONE. That rule is
+    # conditional on the lane having a session id, and the feed the README recommends has none -- so
+    # for the shipped feed type the stated consequence does not happen at all. Nothing asserted it
+    # either way, which is how a document and a code path drift apart: the behaviour is RELIED ON in
+    # this very file (case 12 registers without a session id precisely so the rule cannot end its
+    # call underneath it) and was never checked.
+    #
+    # Two ticks, and the second is the one that matters: the first marks a silent feed down and
+    # stamps the moment, and the lane only reads GONE once the window has elapsed since that stamp.
+    SBq, sq, cq = fresh(tempfile.mkdtemp(prefix="sb_"))
+    sq.register("alpha", "sid-only", now="holding", feed=True, sid="s-A")
+    sq.register("beta", "with-session", now="holding", feed=True, sid="s-B", session_id="host-B")
+    cq.t += 5 * M
+    marked = sq.tick().get("feed_silent", [])
+    cq.t += 2 * M
+    sq.tick()
+    ck("only a feed bound to a session id is marked silent (a --sid feed pings nothing)",
+       marked == ["beta/with-session"], marked)
+    ck("a feed with no session id is never GONE from silence -- its socket closing is the signal",
+       sq.entry("alpha", "sid-only")["hygiene"] == "LIVE"
+       and sq.entry("beta", "with-session")["hygiene"] == "GONE",
+       (sq.entry("alpha", "sid-only")["hygiene"], sq.entry("beta", "with-session")["hygiene"]))
+    # ...and the consequence a reader is owed: its last_seen goes stale anyway, and a stale last_seen
+    # is what decides whether a second holder may take the lane.
+    ck("...but its last_seen goes stale regardless, which is what makes it evictable",
+       sq.entry("alpha", "sid-only")["last_seen_age_s"] > 90,
+       sq.entry("alpha", "sid-only")["last_seen_age_s"])
     return finish()
 
 

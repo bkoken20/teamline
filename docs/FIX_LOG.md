@@ -1353,6 +1353,55 @@ the contract file is never reopened.
 
 ---
 
+## R-14 — the keepalive rule did not apply to the feed this README tells you to run
+
+**Severity:** low in consequence, awkward in position: it is a rule in the contract file, addressed to
+every client, and it is false for the client this repository ships.
+
+**What was wrong.** §2 said *"send `{"ping": 1}` at least every 25 seconds (90 seconds of silence marks
+the lane GONE)."* The silence rule is conditional on the lane carrying a `session_id`. The feed the
+README recommends — `teamline_feed.py --sid` — carries none, so for it the stated consequence never
+happens. Two lanes, identical but for the identity they registered with, after 420 s of silence:
+
+```
+  alpha/sid-only      (--sid, no session_id)   LIVE    last_seen 420 s ago
+  beta/with-session   (session_id)             GONE    last_seen 420 s ago
+```
+
+And the consequence a reader was actually owed is not in the document at all: `last_seen` goes stale
+either way, and a stale `last_seen` is what decides whether a **second holder may take the lane**. So
+the advice is right — ping — and every reason given for it was wrong.
+
+**The test that should have caught it.** None, and this one is sharper than usual: the behaviour was
+*relied on inside the suite* and never asserted. A case in the unit suite registers without a session
+id precisely so the silence rule cannot end its call underneath it, with a comment saying so. The
+suite knew; the contract file did not; nothing connected them.
+
+**The fix.** §2 now says which feed each half of the rule applies to, and says to ping regardless,
+with the reason that actually applies to a `sid` feed. Three checks in the unit suite pin the
+behaviour itself, which nothing had.
+
+**Two things the runner caught that I would not have.**
+
+*A perturbation that looked silent and was not.* The first claim made the silence rule unconditional.
+It reported `SILENT` — "the check did not fail" — which reads as *this check cannot fail*, the most
+expensive wrong conclusion this runner can draw. In fact the perturbation stopped the suite before
+those checks ran at all. **The runner now distinguishes the two**: it asks whether the named check
+appears in the output at all, and reports `NORUN — the suite stopped before this check ran, so the
+claim is UNTESTED, not silent`. That distinction did not exist while every perturbation happened to
+be narrow enough.
+
+*A perturbation that removed the wrong sentence.* The doc claim first replaced one line of a six-line
+bullet. The rest still named both feed types, the check stayed green, and it reported `SILENT` again.
+A perturbation has to remove the thing the check looks for, not the sentence its author thinks is the
+important one.
+
+**The checks.** `R-14-doc` restores the original bullet whole. The three behavioural checks are pins
+rather than claims: there is no fix to undo for them, because the code was always right — it was the
+document that was wrong.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1362,7 +1411,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 154 of the 187 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 157 of the 191 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

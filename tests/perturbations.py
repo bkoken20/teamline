@@ -210,6 +210,23 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-14-doc", suite="e2e", file="docs/PROTOCOL.md",
+         # The WHOLE bullet, all six lines. Replacing only its first line left the rest of the
+         # paragraph still naming both feed types, so the check stayed green and the runner reported
+         # the claim SILENT -- a perturbation has to remove the thing the check looks for, not the
+         # sentence the author happens to think is the important one.
+         find="* send `{\"ping\": 1}` at least every 25 seconds. **Which feed you are decides what silence costs you.**\n"
+              "  A feed registered with `session_id` is marked GONE after 90 seconds of silence, and any call it is\n"
+              "  in ends. A feed registered with `sid` alone is *never* marked GONE by silence — for that one the\n"
+              "  socket closing is the only signal, which is why the shipped client can be a process that only\n"
+              "  receives. **Ping regardless:** a lane's `last_seen` goes stale either way, and a stale `last_seen`\n"
+              "  is what lets a second holder take the lane out from under you;",
+         repl="* send `{\"ping\": 1}` at least every 25 seconds (90 seconds of silence marks the lane GONE);",
+         must_fail="the keepalive rule names which of the two feed types it applies to",
+         why="restores the sentence that told every client a consequence which does not happen to the "
+             "feed the README tells them to run. Replacing only part of the paragraph did NOT fire -- "
+             "the rest still named both types -- which the runner reported before this was recorded"),
+
     dict(id="R-11-doc", suite="e2e", file="docs/PROTOCOL.md",
          find="**A ring waits 90 seconds of the callee's IDLE time, and up to 2 hours of yours.**",
          repl="**A ring waits 90 seconds for an answer and then frees the line.**",

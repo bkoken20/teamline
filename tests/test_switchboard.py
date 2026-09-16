@@ -482,11 +482,23 @@ def main():
         ck("a gamma ext may not carry another team's prefix", False, "no error")
     except SBc.SwitchError:
         ck("a gamma ext may not carry another team's prefix", True)
+    # SECURITY, and it must hold at BOTH layers. The end-to-end suite pins the broker's refusal as
+    # non-enumerating ("the refusal does NOT disclose which teams exist"); this one used to assert the
+    # OPPOSITE of the state machine -- that its message "names the real ones". Both were green, so the
+    # policy held only because team_of() happens to check the header before any Switchboard method
+    # runs. A caller reaching the state machine by any other route got the whole list.
     try:
         sc.register("nosuchteam", "x", now="n", session_id="c")
-        ck("an unknown team is still refused, and the error names the real ones", False, "no error")
+        ck("an unknown team is refused, and the error names the team the CALLER sent", False, "no error")
     except SBc.SwitchError as e:
-        ck("an unknown team is still refused, and the error names the real ones", "gamma" in str(e), e)
+        ck("an unknown team is refused, and the error names the team the CALLER sent",
+           "nosuchteam" in str(e), e)
+        # Scan the message with the caller's OWN token removed: echoing back what the caller sent
+        # discloses nothing, and without this the check goes red for an input like "alphax" that
+        # merely contains a real name. The check has to fail on disclosure, not on the fixture.
+        rest = str(e).replace("nosuchteam", "")
+        ck("...and the state machine's refusal does NOT enumerate the real teams, same as the broker's",
+           not any(t in rest for t in SBc.TEAMS), rest)
 
     # ---- a feed marked down by SILENCE must recover when its holder speaks again.
     # tick() presumes a watcher dead after feed_gone_s of quiet, which is right. But the holder's

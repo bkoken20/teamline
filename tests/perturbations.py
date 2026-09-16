@@ -204,6 +204,15 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-17", suite="unit", file="teamline/switchboard.py",
+         find='                              f"variant of the name, cannot work. Ask the operator to enable it.")',
+         repl='                              f"variant of the name; teams are {TEAMS}.")',
+         must_fail="...and the state machine's refusal does NOT enumerate the real teams, same as the broker's",
+         why="puts the enumerating message back. It hands a caller that guessed a team name wrong the "
+             "whole valid list, and the next guess is a disguise. The broker refuses the same condition "
+             "without the list -- it only gets to because it checks the header first, so the policy has "
+             "to hold here too rather than in the ordering of the two checks"),
+
     dict(id="R-5", suite="e2e", file="teamline/switchboard_broker.py",
          find='                if _lane is not None and sb._hygiene(_lane) == "LIVE":',
          repl='                if False:',

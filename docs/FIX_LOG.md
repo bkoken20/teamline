@@ -2065,6 +2065,55 @@ directory now.
 
 ---
 
+## R-17 — the two suites pinned opposite policies on naming the real teams in a refusal
+
+**Severity:** low as a leak today — no client reaches the message — and high as a signal, because
+both checks were **green**. Two suites asserting opposite things about the same event means one of
+them is wrong, and a reader comparing them cannot tell which.
+
+**What was wrong.** For the same condition — a team the broker does not know — the two layers said
+opposite things, and each had a check pinning its own answer:
+
+```
+  switchboard.py   raise SwitchError(f"unknown team {team!r}; teams are {TEAMS}")
+  test_switchboard.py   "an unknown team is still refused, and the error names the real ones"
+
+  switchboard_broker.py   "team 'x' is not enabled on this broker. ..."   (no list)
+  test_switchboard_e2e.py   "the refusal does NOT disclose which teams exist"
+```
+
+Measured, with `TEAMLINE_TEAMS=alpha,beta,gamma`: the state machine's message discloses
+`['alpha', 'beta', 'gamma']`; the broker's discloses none. A caller that guessed a team name wrong
+would have been handed the valid ones, and the next guess is a disguise.
+
+**The policy held by accident.** `team_of()` checks the header before any `Switchboard` method runs,
+so in the shipped arrangement the broker's message is the one a client sees. That is an *ordering*,
+not a property: `_team()` is called from three places (`_mine`, `register`, `set_running`), and every
+other route into the state machine produced the list. A security rule that depends on which of two
+checks happens to run first is not being enforced anywhere.
+
+**The test that should have caught it is the one that asserted the opposite.** It was green the whole
+time the defect was live, which by the method makes it the defect. It now pins the same policy the
+end-to-end suite pins: the refusal names **what the caller sent**, and nothing else.
+
+**A distinction the fix rests on, measured rather than assumed.** The walk found that a *real* team
+with an unknown extension raises `_unknown()`, which names the closest real **extensions** on
+purpose. That is not the same policy contradicting itself. A team name is the gate — you need one to
+reach any tool at all. An extension name sits behind that gate, and `sw_directory` hands the whole
+list to anyone already through it. The observer surfaces likewise carry team names inside the
+directory they display; that is the documented trusted-network posture in the README's security
+table, not this defect.
+
+**A check that goes red for the fixture is not a check.** The first version scanned the whole message
+for a team name — so an input like `alphax`, which merely *contains* one, would have failed it while
+disclosing nothing. It removes the caller's own token before scanning, and was measured against all
+three cases: the enumerating message red, the fixed message green, the echo-only message green.
+
+**The check.** `R-17` puts the enumeration back on the last line of the message; the check goes red
+naming the disclosure.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

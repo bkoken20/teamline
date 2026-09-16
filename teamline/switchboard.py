@@ -369,7 +369,14 @@ class Switchboard:
     # ------------------------------------------------------------------ helpers
     def _team(self, team):
         if team not in TEAMS:
-            raise SwitchError(f"unknown team {team!r}; teams are {TEAMS}")
+            # SECURITY: name what the CALLER sent, never which teams exist -- listing them hands a
+            # caller that guessed wrong the valid names, and the next guess is a disguise. The broker
+            # refuses the same way (switchboard_broker.team_of), but it only gets to: it checks the
+            # header before any method here runs. This message is what every OTHER route into the
+            # state machine produces, so the policy has to live here too, not in the ordering.
+            raise SwitchError(f"team {team!r} is not enabled on this switchboard. The team is fixed by "
+                              f"configuration, never chosen by the caller -- retrying, or trying a "
+                              f"variant of the name, cannot work. Ask the operator to enable it.")
         return team
 
     def _full(self, team, name):

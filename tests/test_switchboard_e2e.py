@@ -960,6 +960,19 @@ async def run(tmp):
        dict(log=_stated_pin.group(0) if _stated_pin else "no such sentence",
             measured="%d of the %d" % (_ckn - _claims, _ckn)))
 
+    # ---- the log states how many of the original queue it closes, in two places ------------------
+    # They disagreed: one said 15, the other said fourteen, and the second was right -- 14 closed
+    # plus 29 unrecovered is the 43 both cite. The stray one counted a `-L` entry, which this log
+    # elsewhere calls a different thing on purpose: those were re-derived by inspection, not taken
+    # from the queue. Both figures are DERIVED here from the entries that actually exist.
+    _ab_closed = (len(_re0.findall(r"^## A[1-9]\b", _fl, _re0.M))
+                  + len(_re0.findall(r"^## B[1-5]\b", _fl, _re0.M)))
+    _said = [int(n) for n in (_re0.findall(r"these entries close (\d+)", _fl)
+                              + _re0.findall(r"(\d+) of those are closed above", _fl))]
+    ck("the fix log agrees with itself, and with its own entries, on how many queue items it closes",
+       len(_said) == 2 and set(_said) == {_ab_closed},
+       dict(stated=_said, entries_present=_ab_closed))
+
     # ---- a security control that is OFF must be disclosed where people look for it ---------------
     # The broker disables the MCP transport's DNS-rebinding guard, for a real reason: it allows only
     # Host: 127.0.0.1, and every client on a non-loopback deployment is refused. But the README's

@@ -689,7 +689,7 @@ believed in the first place.
 
 **Severity:** medium. It is the security section's own advice that a reader cannot follow.
 
-**On the numbering.** The review queue — 43 items, of which these entries close 15 — did not travel
+**On the numbering.** The review queue — 43 items, of which these entries close 14 — did not travel
 between machines; only its per-group counts did. The three group-B items still open are therefore
 known by count and not by content, and this is **not** one of them recovered. It was found by
 re-deriving what group B measures: setting the repository up from the README, cold, on a machine that
@@ -2691,6 +2691,31 @@ absence; the check goes red.
 
 ---
 
+## R2-3 — the log stated two different counts for one quantity
+
+**Severity:** low in consequence, and it is the defect class this file exists to keep out of a
+published repository: a document contradicting itself about its own contents. Found by a cold review.
+
+**What was wrong.** One entry said the review queue was *"43 items, of which these entries close
+15"*. The closing section said *"Fourteen of those are closed above — `A1`-`A9` and `B1`-`B5`"*.
+Counted, the entries present are nine plus five: **14**. The second is also the one that adds up,
+since it puts the remainder at 29 and 14 + 29 = 43.
+
+**Where the 15 came from.** It counted a `-L` entry — and this log says, in its own words a few
+paragraphs later, that those are *a different thing from the rest*: re-derived by inspecting the
+repository rather than taken from the queue that did not survive the move between machines. Counting
+one of them into the queue's tally quietly undoes that distinction.
+
+**The fix.** Both places say 14, and both say it as a **numeral**. The word *"Fourteen"* was not
+wrong, but a figure spelled out is invisible to a check — measured: the first version of the check
+below found one of the two figures and had no idea the other existed.
+
+**The check.** It counts the `A` and `B` entries that actually exist in the file and requires every
+stated figure to equal that count. Both numbers are derived; neither is written into the check, which
+is what went wrong with `C-L1b` three times. `R2-3` restores the disagreement; the check goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -2700,7 +2725,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 155 of the 229 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 155 of the 230 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
@@ -2708,8 +2733,10 @@ and the open ones live in somebody's memory until they do not.
 | **The history carries three author identities.** Counted: 18 commits a personal e-mail address, 38 a GitHub noreply address (which still carries the account name and numeric id), 10 a maintainer address. Nothing technical stops a push; which identity a public history carries is the maintainer's decision, and changing it afterwards means rewriting the history again. | **open, and a decision rather than a defect** |
 
 **On the review this log describes, and what became of it.** The adversarial review produced 94
-findings, deduplicated to 43 items in six groups. Fourteen of those are closed above — `A1`–`A9` and
-`B1`–`B5`. The remaining 29 were recorded **outside the repository**, in the working session that ran
+findings, deduplicated to 43 items in six groups. 14 of those are closed above — `A1`–`A9` and `B1`–`B5`, nine
+plus five. The figure is written as a numeral in both places it appears so that a check can read it:
+one of the two used to say 15, counting a `-L` entry, which this log elsewhere calls a different
+thing on purpose. The remaining 29 were recorded **outside the repository**, in the working session that ran
 the review, and did not survive a move between machines. Their content is currently unknown.
 
 The five entries numbered with an `-L` suffix are therefore a different thing from the rest, and are

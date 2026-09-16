@@ -207,6 +207,15 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R2-3", suite="e2e", file="docs/FIX_LOG.md",
+         find="of which these entries close 14",
+         repl="of which these entries close 15",
+         must_fail="the fix log agrees with itself, and with its own entries, on how many queue items it closes",
+         why="restores the disagreement a cold review found: the log stated two different counts for "
+             "one quantity, and the stray one counted an entry the log itself calls a different kind "
+             "of thing. A document that contradicts itself about its own contents is the defect class "
+             "this whole file exists to keep out of a published repository"),
+
     dict(id="R2-1", suite="e2e", file="tests/test_switchboard_e2e.py",
          find="        except FileNotFoundError:",
          repl="        except ValueError:",

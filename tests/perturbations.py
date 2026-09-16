@@ -204,6 +204,15 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-30", suite="e2e", file="tests/test_perturbations.py",
+         find='    return ("Scope: %d of the %d checks in the two suites are pinned this way. The rest are present "',
+         repl='    return ("Every check in the two suites has been shown able to fail." or',
+         must_fail="the runner's printed verdict states the fraction of checks it pins, with the real numbers",
+         why="makes the runner's verdict claim complete coverage while it pins a fraction, in words "
+             "the old check did not know. That check grepped this file for one spelling of one "
+             "overstatement, so three rewordings of the same claim passed it; the replacement reads "
+             "what the runner PRINTS and requires the true fraction to be in it"),
+
     dict(id="R-29", suite="e2e", file="teamline/switchboard.py",
          find="        if msg_id in self._delivered:      # settled: a delivery is not reversible by a later sweep",
          repl="        if False:                          # PERTURBED: the guard is gone",
@@ -324,7 +333,8 @@ PERTURBATIONS = [
 
     dict(id="C-L2", suite="e2e", file="README.md",
          find="rebinding", repl="host-header", all_occurrences=True,
-         must_fail="if the DNS-rebinding guard is disabled, the security section says so",
+         must_fail="if the DNS-rebinding guard is disabled, the security section RAISES it "
+                   "(a link, not a proof that what it says is right)",
          why="removes the disclosure that a security control is off, which is the state the "
              "repository shipped in. ALL occurrences, for B5's reason: the disclosure explains the "
              "attack as well as naming it, so blanking the heading alone leaves the word in the "

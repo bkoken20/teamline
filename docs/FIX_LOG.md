@@ -2494,6 +2494,46 @@ appear in both the delivered and the failed sets. `R-29` removes the guard; the 
 
 ---
 
+## R-30 — two checks were word-greps on their own sources, which this log warns against
+
+**Severity:** low, and pointed directly at this log: *"a check that greps source will eventually match
+the prose about the defect rather than the defect."* Two of the newest checks were doing it.
+
+**E-L1, and what it actually tested.** It passed unless the literal phrase `"every check can fail"`
+appeared in the runner's **source**. So it knew one spelling of one overstatement — the one already
+fixed. Measured against three rewordings of the same claim (*"each check ... has been shown able to
+fail"*, *"all checks are proven capable of failing"*, *"no check ... can silently pass"*): **all three
+pass it.** A negative check on a literal goes green the moment the wording moves, and wording moves.
+
+**The replacement asserts on what the runner PRINTS, and asserts it positively.** The scope sentence
+now has a name, `scope_line()`, and `--scope` prints it without running a claim, so the check costs
+one subprocess instead of a 71-claim run. It then requires the printed verdict to state the true
+fraction: the pinned count and the check count, both computed independently in the suite. A rewording
+that drops the fraction fails it; a wording that keeps it cannot overstate coverage, because the
+numbers are the coverage. **No rewording can fake a count.**
+
+**Walked through every way the check can answer**, since a check is only worth its green if the other
+answers are reachable: a **true** fraction passes; **no** fraction — the overstatement the old check
+could not see — fails; a **wrong** fraction, right words and bad arithmetic, fails; and a runner that
+**will not run at all** fails rather than reading success out of empty output, which is how a broken
+tool reports as a healthy system.
+
+**C-L2 is kept, and now says what it is.** It asks whether the security section raises the disabled
+DNS-rebinding guard at all. It cannot ask whether the paragraph is right — a section reading
+*"rebinding is not a concern here"* passes it exactly as well as the true one. No check adjudicates
+prose. Its name says **"a link, not a proof that what it says is right"**, because a green whose name
+implies the passage was verified is worse than no check: someone will read it as verification.
+
+**Renaming a check breaks whatever names it.** A perturbation claim named the old wording and went
+stale the instant it changed; it was re-pointed and fires. It was caught here by searching for the
+old name before running anything — the cross-check added after `C-L1b` is the backstop for when I do
+not, and it caught the same class earlier today when a fix moved the line another claim named.
+
+**The check.** `R-30` makes the runner's verdict claim complete coverage in words the old check did
+not know. The new one goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

@@ -888,10 +888,22 @@ async def run(tmp):
     _pn = len(_re0.findall(r"dict\(id=", io.open(os.path.join(_tdir, "perturbations.py"), encoding="utf-8").read()))
     _ckn = sum(len(_re0.findall(r"^\s*ck\(", io.open(os.path.join(_tdir, s), encoding="utf-8").read(), _re0.M))
                for s in _suites if s != "test_perturbations.py")
-    _rsrc = io.open(os.path.join(_tdir, "test_perturbations.py"), encoding="utf-8").read()
-    ck("the perturbation runner does not claim to verify every check when it pins a subset",
-       not (_pn < _ckn and "every check can fail" in _rsrc),
-       "pins %d of %d checks, and its verdict says 'every check can fail'" % (_pn, _ckn))
+    # Asserted against what the runner PRINTS, and asserted POSITIVELY. This used to grep the
+    # runner's source for the words of an overstatement it had already been fixed to stop making:
+    # it caught that one spelling and let every synonym through -- measured, three rewordings of the
+    # same claim passed it. A negative check on a literal passes the moment the wording moves, which
+    # is the direction wording moves. A positive one on the NUMBERS fails whenever the honest
+    # fraction stops being stated, and no rewording can fake a count.
+    #
+    # `--scope` prints the verdict's scope line without running a single claim, so this costs one
+    # subprocess rather than a full perturbation run.
+    _scope = subprocess.run([sys.executable, os.path.join(_tdir, "test_perturbations.py"), "--scope"],
+                            capture_output=True, text=True, timeout=60)
+    _nums = _re0.findall(r"\d+", _scope.stdout)
+    ck("the runner's printed verdict states the fraction of checks it pins, with the real numbers",
+       _scope.returncode == 0 and len(_nums) >= 2 and _nums[0] == str(_pn) and _nums[1] == str(_ckn),
+       dict(printed=_scope.stdout.strip()[:120], counted_pinned=_pn, counted_checks=_ckn,
+            stderr=_scope.stderr[-120:]))
 
     # ---- a security control that is OFF must be disclosed where people look for it ---------------
     # The broker disables the MCP transport's DNS-rebinding guard, for a real reason: it allows only
@@ -903,7 +915,13 @@ async def run(tmp):
     _bsrc = io.open(os.path.join(PKG, "teamline_broker.py"), encoding="utf-8").read()
     _guard_off = "enable_dns_rebinding_protection=False" in _bsrc
     _sec = _readme0().split("## Security model")[-1].split("\n## ")[0] if "## Security model" in _readme0() else ""
-    ck("if the DNS-rebinding guard is disabled, the security section says so",
+    # WHAT THIS IS, SAID IN ITS NAME: a link, not a proof. It asks whether the subject is RAISED in
+    # the section a deployer reads. It cannot ask whether the paragraph is correct -- a section
+    # reading "rebinding is not a concern here" passes it exactly as well as the true one. No check
+    # can adjudicate prose, and a check whose name implies it did would be worse than no check: the
+    # green would be read as the paragraph having been verified by something.
+    ck("if the DNS-rebinding guard is disabled, the security section RAISES it (a link, not a proof "
+       "that what it says is right)",
        (not _guard_off) or ("rebinding" in _sec.lower()),
        "guard_off=%s, security section mentions rebinding=%s" % (_guard_off, "rebinding" in _sec.lower()))
 

@@ -87,7 +87,31 @@ def ran(out, name):
                if ln.strip().startswith(("PASS", "FAIL")))
 
 
+def check_count():
+    """How many ck( assertions the two suites hold. Counted, never written down."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return sum(len(re.findall(r"^\s*ck\(", io.open(os.path.join(here, f), encoding="utf-8").read(), re.M))
+               for f in sorted(os.listdir(here))
+               if f.startswith("test_") and f.endswith(".py") and f != "test_perturbations.py")
+
+
+def scope_line(pinned, total=None):
+    """The verdict's scope sentence, in one place.
+
+    It exists as a function because a check asserts on what this runner PRINTS. That check used to
+    grep this file for the words of an overstatement it had already been fixed to stop making, which
+    caught one spelling and let every synonym past. `--scope` prints this line without running a
+    single claim, so the assertion can be made against the real output for the price of a subprocess.
+    """
+    total = check_count() if total is None else total
+    return ("Scope: %d of the %d checks in the two suites are pinned this way. The rest are present "
+            "but UNPROVEN -- no one has shown they can fail." % (pinned, total))
+
+
 def main():
+    if "--scope" in sys.argv:
+        print(scope_line(len(PERTURBATIONS)))
+        return 0
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     only_unit = "--unit" in sys.argv
     todo = [p for p in PERTURBATIONS
@@ -182,14 +206,9 @@ def main():
     # other checks are present but unproven -- nobody has shown they can fail, which is exactly the
     # state a check that cannot fail hides in. Naming the fraction is the honest version, and it is
     # computed rather than written down so it cannot drift.
-    _here = os.path.dirname(os.path.abspath(__file__))
-    _total = sum(len(re.findall(r"^\s*ck\(", io.open(os.path.join(_here, f), encoding="utf-8").read(), re.M))
-                 for f in sorted(os.listdir(_here))
-                 if f.startswith("test_") and f.endswith(".py") and f != "test_perturbations.py")
     print("all %d claims in the fix log hold: each names a check that goes RED when its fix is undone."
           % len(todo))
-    print("Scope: %d of the %d checks in the two suites are pinned this way. The rest are present but "
-          "UNPROVEN -- no one has shown they can fail." % (len(todo), _total))
+    print(scope_line(len(todo)))
     return 0
 
 

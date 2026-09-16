@@ -156,11 +156,31 @@ PERTURBATIONS = [
          why="puts back the stale suite count the repository shipped with -- there were three"),
 
     dict(id="C-L1b", suite="e2e", file="README.md",
-         find="Roughly 1,550 lines of implementation and 1,700 lines of",
-         repl="Roughly 1,700 lines of implementation and 1,000 lines of",
+         # The numbers move whenever the suites grow, so this claim is pinned to the SENTENCE and not
+         # to a figure: `{LINES}` is substituted by the runner with a count deliberately far enough
+         # out to fail the 20% band. Written as literal figures it went stale twice in one day, and
+         # the only thing that noticed was a thirty-minute gate run.
+         find="Roughly 1,610 lines of implementation and 2,690 lines of",
+         repl="Roughly {LINES} lines of implementation and {LINES} lines of",
          must_fail="the README's 'roughly N lines' claims are within 20% of the real counts",
-         why="puts back the shipped figures: the tests claim was out by 70%, understating the suite "
-             "it was describing"),
+         why="restates the counts as figures the code does not support. The original defect was a "
+             "tests claim out by 70%, understating the suite it was describing"),
+
+    dict(id="C-L1c", suite="e2e", file="tests/perturbations.py",
+         # It targets B3's line, not the claim above it: quoting that one made this claim's own `find`
+         # match twice -- itself and its target -- and the runner refused it as AMBIG. A perturbation
+         # that appears inside its own payload is not exact.
+         find='find="| `TEAMLINE_ROOT` |", repl="| `UNDOCUMENTED_NOW` |",',
+         repl='find="| `NO_SUCH_VARIABLE_ROW` |", repl="| `UNDOCUMENTED_NOW` |",',
+         # BOTH occurrences, because the second one is this claim's own payload. A claim that edits
+         # the claims file necessarily contains the text it edits, so "exactly once" can never hold
+         # for it -- pointing it at a different line does not help, which was the second attempt.
+         all_occurrences=True,
+         must_fail="every perturbation claim's target text is still in the file it names",
+         why="makes another claim STALE -- its target text no longer in the file it names. The runner "
+             "already reports that, but only after re-running a suite per claim; this is the same "
+             "question in a second, and the reason it exists is that a stale claim cost half an hour "
+             "twice in one day before anything noticed"),
 
     dict(id="C-L2", suite="e2e", file="README.md",
          find="rebinding", repl="host-header", all_occurrences=True,

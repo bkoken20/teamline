@@ -416,6 +416,27 @@ async def run(tmp):
     ck("the security section names every surface that needs no team name",
        not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
 
+    # ---- every perturbation claim must still APPLY to this repository -----------------------------
+    # There was already a cross-check that every claim names a CHECK that exists. Nothing checked the
+    # other half: that the text it edits is still there. A claim whose `find` has gone is reported
+    # STALE -- correctly -- but only by the runner, which re-runs a whole suite per claim and takes
+    # half an hour. Editing one README line made one claim stale, twice in a day, and the cost of
+    # noticing was that half hour both times. This is the same question asked in a second, so any run
+    # of this suite answers it.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from perturbations import PERTURBATIONS as _PERTS
+    _stale, _ambig = [], []
+    for _p in _PERTS:
+        _f = os.path.join(_root, _p["file"].replace("/", os.sep))
+        _txt8 = io.open(_f, encoding="utf-8", errors="replace").read() if os.path.isfile(_f) else ""
+        _n8 = _txt8.count(_p["find"])
+        if _n8 == 0:
+            _stale.append("%s -> %s" % (_p["id"], _p["file"]))
+        elif _n8 > 1 and not _p.get("all_occurrences"):
+            _ambig.append("%s -> %d places" % (_p["id"], _n8))
+    ck("every perturbation claim's target text is still in the file it names",
+       not _stale and not _ambig, {"stale": _stale, "ambiguous": _ambig})
+
     # ---- every door into the ledger must bound the text it writes ---------------------------------
     # A8 capped `say` and `leave`. `operator_say` was the third door and was capped by nobody, so an
     # unauthenticated HTTP POST wrote a 40,000-character row -- then fanned out to both parties as

@@ -130,7 +130,11 @@ def main():
                        # here it would BE a dangling reference, in a file the check reads.
                        # Note the extension is a separate slot: written as one literal, this line
                        # would itself read as a reference to a document that does not exist.
-                       .replace("{MISSING}", "NOT_A_REAL_DOCUMENT_%s.%s" % (needle[3:9], "md")))
+                       .replace("{MISSING}", "NOT_A_REAL_DOCUMENT_%s.%s" % (needle[3:9], "md"))
+                       # `{LINES}` is a count far enough from any real one to fail a 20% band. A
+                       # claim about self-counting prose cannot carry the figures, or it goes stale
+                       # every time the thing it counts changes size.
+                       .replace("{LINES}", "99,000"))
             write(path, src.replace(p["find"], payload).encode("utf-8"))
             out = run_suite(p["suite"], needle)
             fails = failed_checks(out)

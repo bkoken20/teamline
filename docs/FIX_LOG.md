@@ -1788,6 +1788,45 @@ actually owed.
 
 ---
 
+## C-L1c — a claim can go stale, and only the slowest thing here noticed
+
+**Severity:** low for the software and high for the cost of working on it.
+
+**What was wrong.** A perturbation claim names the exact text it edits. `C-L1b` pointed at the
+README's *"roughly N lines"* sentence — and that sentence gets **corrected whenever the suites grow**,
+which happened twice in one day as checks were added. Each time, the claim's target text stopped
+existing.
+
+The runner handles that correctly: it reports `STALE`, meaning *the fix was changed or removed and
+this claim no longer describes the repository*. But it finds out by re-running a whole suite per
+claim, which at 55 claims is **about half an hour**. So a one-character problem was detected twice, on
+each occasion by the most expensive instrument available, after the work that caused it was long
+finished.
+
+**The test that should have caught it.** Half of it existed. A cross-check already asserts that every
+claim names a **check** that exists — added after a rename orphaned one. Nothing asserted the other
+half: that the **text it edits** is still there. Both are the same question — *does this claim still
+apply?* — and only one of them was being asked.
+
+**The fix, in two parts.** The check now asks both, and it runs inside the end-to-end suite: every
+claim's `find` must occur in the file it names, exactly once unless it declares otherwise. That turns
+half an hour into a second, and any run of the suite answers it.
+
+And `C-L1b` itself no longer carries the figures. It is pinned to the sentence, with the runner
+substituting a count far enough out to fail the band — because a claim about self-counting prose
+cannot hold the numbers without going stale every time the thing it counts changes size.
+
+**The claim that pins it took three attempts, and the reason is worth keeping.** A claim that edits
+the claims file necessarily *contains* the text it edits, so it matches twice and the runner refuses
+it as `AMBIG` — correctly, since a perturbation must be exact. Pointing it at a different claim's line
+did not help: the same thing happened again. It declares `all_occurrences` now, which replaces its own
+payload along with its target, and the file still parses.
+
+**The checks.** `C-L1c` makes another claim's target text vanish; the new check goes red. `C-L1b` fires
+on the substituted counts.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1797,7 +1836,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 160 of the 201 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 161 of the 202 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

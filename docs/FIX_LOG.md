@@ -2716,6 +2716,41 @@ is what went wrong with `C-L1b` three times. `R2-3` restores the disagreement; t
 
 ---
 
+## R2-5 — the suite hard-coded a port, so it could not run beside the tool that runs it
+
+**Severity:** low, and it bites the exact reader the README creates: it prints two commands, and
+running them at the same time made one of them die before a single check reported.
+
+**What was wrong.** `PORT = 3792`, a constant — while the perturbation runner runs **this very suite**,
+dozens of times, on that same port. The symptom is *"only one usage of each socket address is
+normally permitted"* and a dead run. Measured live during this session: the publish gate held the
+port and the suite could not start.
+
+**The fix asks the OS instead of choosing.** `free_port()` binds port 0, reads what it was given and
+releases it. Nothing else in the tree referred to 3792, so there was nothing to keep it for.
+`TEAMLINE_TEST_PORT` pins it for anyone who needs a fixed one — a firewall rule, a container with a
+single port mapped — and pinning a port you do not have still fails loudly, which is what an escape
+hatch should do.
+
+**The alternative, and the number.** An environment variable with the same 3792 default is one line
+and matches the broker's convention. It leaves the collision in place for every reader who does not
+know the variable exists, which includes the runner itself: N concurrent runs, N collisions. Asking
+the OS leaves zero and requires nothing of the reader.
+
+**Measured, not reasoned.** With a squatter holding 3792: the suite runs to ALL PASS. Two suites
+started together: both reach a verdict, 58 s wall clock for the pair.
+
+**The race the fix introduces, made legible.** `free_port()` picks, closes, and only then does uvicorn
+bind — another process can take the port in that window. It is small and it is real, and without
+help its symptom is every check failing at once with nothing saying why. A check now asserts the
+server actually bound, names the port, and names the variable that pins one.
+
+**The check, and the first version of it that could not fail.** Asked while this run's own server is bound, a free port cannot be the one in use. The claim that pins it first replaced the
+`PORT = free_port()` line with a constant — and the check went on passing, because `free_port()` is a separate function and still answered honestly. The runner said `SILENT`. The claim targets
+**what `free_port()` returns** now, which is the single source of the port: with that a constant, `PORT` is that constant and so is the second call, the two are equal, and the check goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -2725,9 +2760,10 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 155 of the 230 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 156 of the 232 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
+| **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |
 | **The history carries three author identities.** Counted: 18 commits a personal e-mail address, 38 a GitHub noreply address (which still carries the account name and numeric id), 10 a maintainer address. Nothing technical stops a push; which identity a public history carries is the maintainer's decision, and changing it afterwards means rewriting the history again. | **open, and a decision rather than a defect** |

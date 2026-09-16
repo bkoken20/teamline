@@ -10,6 +10,7 @@ import io
 import re as _re0
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -22,7 +23,30 @@ os.environ.setdefault("TEAMLINE_TEAMS", "alpha,beta,gamma")
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 FAILS = []
-PORT = 3792
+
+
+def free_port():
+    """A port nobody is using, asked of the OS rather than chosen.
+
+    This was 3792, a constant -- and the README invites you to run this suite AND the perturbation
+    runner, which runs this very suite dozens of times on that same port. Running both means
+    "only one usage of each socket address is normally permitted" and a dead run before a single
+    check reports. Nothing else in the tree refers to the number, so there is nothing to keep it for.
+
+    TEAMLINE_TEST_PORT pins it for anyone who needs a fixed one -- a firewall rule, a container with
+    one port mapped."""
+    env = os.environ.get("TEAMLINE_TEST_PORT")
+    if env:
+        return int(env)
+    s = socket.socket()
+    try:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+    finally:
+        s.close()
+
+
+PORT = free_port()
 
 
 def _readme0():
@@ -56,6 +80,11 @@ async def run(tmp):
         if server.started:
             break
         await asyncio.sleep(0.1)
+    # free_port() asks the OS, closes the probe socket, and only then does uvicorn bind: another
+    # process can take the port in between. The window is small and it is real, and without this the
+    # symptom is every check below failing at once with nothing saying why. One line, naming the port.
+    ck("the test broker actually bound its port (if not, everything below fails for that reason)",
+       server.started, dict(port=PORT, hint="set TEAMLINE_TEST_PORT to pin a port you know is free"))
     url = "http://127.0.0.1:%d/mcp" % PORT
 
     async def call(team, tool, **args):
@@ -972,6 +1001,14 @@ async def run(tmp):
     ck("the fix log agrees with itself, and with its own entries, on how many queue items it closes",
        len(_said) == 2 and set(_said) == {_ab_closed},
        dict(stated=_said, entries_present=_ab_closed))
+
+    # ---- two runs of this suite must not fight over a port ----------------------------------------
+    # Asked while this run's own server is bound: a free port cannot be the one in use. If the port
+    # were a constant again, this would answer with that constant and go red. It is behaviour, not a
+    # source grep -- the habit R-30 removed from two checks.
+    ck("the suite takes a free port from the OS, so a second run does not collide with it",
+       bool(os.environ.get("TEAMLINE_TEST_PORT")) or free_port() != PORT,
+       dict(port=PORT, asked_again=free_port(), pinned=os.environ.get("TEAMLINE_TEST_PORT")))
 
     # ---- a security control that is OFF must be disclosed where people look for it ---------------
     # The broker disables the MCP transport's DNS-rebinding guard, for a real reason: it allows only

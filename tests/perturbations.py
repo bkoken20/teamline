@@ -207,6 +207,14 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R2-5", suite="e2e", file="tests/test_switchboard_e2e.py",
+         find="        return s.getsockname()[1]",
+         repl="        return 3792",
+         must_fail="the suite takes a free port from the OS, so a second run does not collide with it",
+         why="puts the constant back, so this suite cannot run beside the perturbation runner that "
+             "runs it -- which is what the README invites in the two commands it prints one after the "
+             "other. The symptom is a dead run before a single check reports"),
+
     dict(id="R2-3", suite="e2e", file="docs/FIX_LOG.md",
          find="of which these entries close 14",
          repl="of which these entries close 15",

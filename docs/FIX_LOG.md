@@ -2001,6 +2001,36 @@ completed row instead of refusing.
 
 ---
 
+## R-15 — "refused" was asserted by catching anything at all
+
+**Severity:** low, and it is the same disease as `R-3` and `R-4` in a smaller place: a check that
+passes for reasons other than the one it names.
+
+**What was wrong.**
+
+```
+  try:
+      async with websockets.connect(".../ws?party=alpha") as w1:
+          await asyncio.wait_for(w1.recv(), 2)
+      ck("a feed without an extension name is refused", False, "accepted")
+  except Exception:
+      ck("a feed without an extension name is refused", True)
+```
+
+`except Exception` covers the outcome that matters. A broker that **accepted** the socket and then
+said nothing would time out after two seconds, the timeout would raise, and the check would report
+the connection as refused — the exact failure it exists to catch, recorded as a pass.
+
+**The fix.** The refusal has a documented form — an HTTP **403** at the handshake, in `PROTOCOL` §2 —
+and that is what is asserted now: refused *before* acceptance, carrying the status the contract names.
+A timeout no longer looks like anything but a timeout, because it carries neither a status nor a close
+code and the check says so in its own failure detail.
+
+**The check.** `R-15` makes the broker accept the socket and go quiet. The old check passed on that.
+The new one fails, which is the whole difference between the two.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -2010,7 +2040,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 169 of the 213 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 169 of the 212 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

@@ -166,6 +166,15 @@ PERTURBATIONS = [
          why="restates the counts as figures the code does not support. The original defect was a "
              "tests claim out by 70%, understating the suite it was describing"),
 
+    dict(id="R-15", suite="e2e", file="teamline/teamline_broker.py",
+         find="        await ws.close(code=4000)          # no team-level address: a feed names its extension",
+         repl="        await ws.accept()                  # accepted, then silent -- the case that used to pass\n"
+              "        await asyncio.sleep(30)",
+         must_fail="a feed without an extension name is refused at the handshake, with the documented status",
+         why="accepts the socket and then says nothing. The old check caught any exception at all, so "
+             "the 2-second read timing out READ AS A REFUSAL -- a broker that silently swallowed "
+             "these connections passed it. Asserting the documented 403 is what tells them apart"),
+
     dict(id="R-13-tail", suite="unit", file="teamline/switchboard.py",
          find='                if _i == len(_lines) - 1 and not ln.endswith("\\n"):\n'
               '                    _torn = ln\n'

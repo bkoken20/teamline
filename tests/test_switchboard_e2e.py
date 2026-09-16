@@ -114,12 +114,23 @@ async def run(tmp):
     # ---- v1 retired ---------------------------------------------------------------------------
     r = await call("alpha", "line_status")
     ck("the v1 team-level tools no longer exist", isinstance(r, str) and "unknown" in r.lower(), str(r)[:120])
+    # THE SPECIFIC OUTCOME, not "something raised". This used to be `except Exception: ck(..., True)`,
+    # which passes on anything at all -- including the case worth worrying about, a broker that
+    # ACCEPTS the socket and then says nothing, where the 2-second read times out and the timeout
+    # reads as a refusal. The documented answer is an HTTP 403 at the handshake (PROTOCOL 2), so that
+    # is what is asserted: refused before acceptance, with the status the contract names.
+    _w1out = None
     try:
         async with websockets.connect("ws://127.0.0.1:%d/ws?party=alpha" % PORT) as w1:
             await asyncio.wait_for(w1.recv(), 2)
-        ck("a feed without an extension name is refused", False, "accepted")
-    except Exception:
-        ck("a feed without an extension name is refused", True)
+        _w1out = "ACCEPTED -- the socket was not refused at all"
+    except Exception as _e1:
+        _status = getattr(getattr(_e1, "response", None), "status_code", None)
+        _w1out = ("%s status=%s code=%s" % (type(_e1).__name__, _status, getattr(_e1, "code", None))
+                  if _status or getattr(_e1, "code", None) else
+                  "%s -- neither a status nor a close code" % type(_e1).__name__)
+    ck("a feed without an extension name is refused at the handshake, with the documented status",
+       "status=403" in str(_w1out), _w1out)
     async with httpx2.AsyncClient() as hc:
         pg = (await hc.get("http://127.0.0.1:%d/" % PORT)).text
     ck("the page carries no v1 team cards", "v1 line" not in pg and "id=parties" not in pg, pg[:100])

@@ -324,7 +324,11 @@ async def run(tmp):
                 for ln in _req.splitlines() if ln.strip() and not ln.lstrip().startswith("#")}
     ck("the declared set is read from requirements.txt, and that file lists something",
        len(declared) >= 4, sorted(declared))
-    stdlib = set(getattr(sys, "stdlib_module_names", ()))
+    # Read DIRECTLY, not through a getattr fallback. An empty set here does not make this check
+    # skip: it makes it flag the standard library as undeclared dependencies, which is a failure
+    # pointing nowhere near its cause. The README states 3.10 as the floor and the attribute has
+    # existed since 3.10, so below the floor the suite should say which attribute is missing.
+    stdlib = set(sys.stdlib_module_names)
     undeclared = {}
     for _mod in sorted(os.listdir(PKG)):
         if not _mod.endswith(".py"):

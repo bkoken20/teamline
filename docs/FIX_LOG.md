@@ -2544,8 +2544,12 @@ decides whether there is an eleventh.
 
 The number was measured rather than adopted. Every file in the package and the suites parses under
 **3.8** — syntax alone does not set the floor. What sets it is `anext`, which arrives in **3.10** and
-is used by the end-to-end suite. (The review also cited `sys.stdlib_module_names`; it is used by
-nothing in this tree any more, so it is not part of the floor.) The README now says **Python 3.10+**,
+is used by the end-to-end suite. **A correction, found by a later cold review:** this entry first
+said `sys.stdlib_module_names` was *"used by nothing in this tree any more"*. It is used, by the
+hidden-dependency check, and it is part of the same 3.10 floor. The claim came from a search for the
+dotted spelling, which does not appear — the code reaches the attribute through `getattr`, and an
+empty result was read as absence. The same mistake as the case-sensitive history search in `D-L1`,
+in a different costume. The README now says **Python 3.10+**,
 names the function that makes it so, and says plainly that **3.13.1 is the only version anyone has
 run** — a floor the code requires is not a range someone tested.
 
@@ -2580,6 +2584,20 @@ required the literal word *"usage"* in the output. That is a word-grep on our ow
 after two of them were replaced for the same reason. It asserts behaviour now: no traceback, a
 non-empty message, a non-zero exit — and the check beside it carries the rest by requiring the
 message to name a tool the broker actually serves.
+
+**And the code was making the same claim.** The attribute was read as
+`getattr(sys, "stdlib_module_names", ())`, which looks like graceful degradation and is not: measured
+against the check's own arithmetic, an empty set flags the **standard library** as undeclared
+dependencies — `os`, `json`, `asyncio` and the rest — so below 3.10 that check does not skip, it fails
+with a reason that points nowhere near the cause. The README now states 3.10 as the floor, where the
+attribute always exists, so it is read directly. Below the floor the suite says which attribute is
+missing instead of blaming the standard library.
+
+**No test, this is prose — for the first half.** A sentence in a log claiming a name is unused has no
+check behind it, and inventing one that greps for the name would be the habit `R-30` removed. What
+does have a backstop is the floor itself: the check from `R-32` parses every file at the version the
+README states. The second half is not testable on this box either, since only 3.13.1 is installed;
+what is measured is the arithmetic, in the evidence script.
 
 **The checks.** `R-32` takes the CLI back to indexing `sys.argv[1]`; `R-32-doc` removes the version
 from the README. Both go red.

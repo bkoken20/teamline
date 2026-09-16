@@ -416,6 +416,37 @@ async def run(tmp):
     ck("the security section names every surface that needs no team name",
        not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
 
+    # ---- the configuration prose must match which side actually reads each variable ---------------
+    # "The broker reads the first four, a client reads the last two" -- of a table with seven rows,
+    # five of which the broker reads. A reader follows that sentence when deciding what to set where.
+    # Derived rather than counted by hand, and derived from `os.environ` calls specifically: a first
+    # attempt matched the variable NAME anywhere in the file and mis-attributed one, because the feed
+    # client names TEAMLINE_PORT inside an error message telling you it is the BROKER's knob.
+    _rows = _re0.findall(r"^\|\s*`(TEAMLINE_[A-Z_]+)`", _readme0(), _re0.M)
+    _reads = {}
+    for _f in sorted(os.listdir(PKG)):
+        if _f.endswith(".py"):
+            _txt6 = io.open(os.path.join(PKG, _f), encoding="utf-8").read()
+            _side = "client" if _f in ("teamline_cli.py", "teamline_feed.py") else "broker"
+            for _v in _re0.findall(r"""os\.environ(?:\.get)?\(?\[?["'](TEAMLINE_[A-Z_]+)["']""", _txt6):
+                _reads.setdefault(_v, set()).add(_side)
+    _lead = 0
+    while _lead < len(_rows) and _reads.get(_rows[_lead]) == {"broker"}:
+        _lead += 1
+    _tail = 0
+    while _tail < len(_rows) - _lead and _reads.get(_rows[-1 - _tail]) == {"client"}:
+        _tail += 1
+    _WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7}
+    # Searched against whitespace-normalised text: the sentence wraps, and a regex that assumes
+    # single spaces silently found nothing -- which this check would have reported as the prose being
+    # absent rather than wrong. Same answer here, different reason, and the difference matters.
+    _m6 = _re0.search(r"broker reads the first (\w+), a client reads the last (\w+)",
+                      " ".join(_readme0().split()))
+    _said = (_WORDS.get(_m6.group(1).lower()), _WORDS.get(_m6.group(2).lower())) if _m6 else (None, None)
+    ck("the configuration prose counts the variables each side reads, correctly",
+       _said == (_lead, _tail),
+       {"prose says": _said, "code says": (_lead, _tail), "rows": len(_rows)})
+
     # ---- the keepalive rule must say WHICH feed type it applies to ---------------------------------
     # §2 told every client that 90 seconds of silence marks its lane GONE. The rule is conditional on
     # the lane carrying a session id, and the feed the README recommends carries none -- so for the

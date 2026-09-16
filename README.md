@@ -123,7 +123,7 @@ TEAMLINE_PARTY=alpha python teamline/teamline_cli.py sw_call \
 
 ## Configuration
 
-Everything is an environment variable; there is no config file. The broker reads the first four, a
+Everything is an environment variable; there is no config file. The broker reads the first five, a
 client reads the last two.
 
 | variable | default | what it does |
@@ -134,7 +134,7 @@ client reads the last two.
 | `TEAMLINE_BIND` | `127.0.0.1` | the address it binds. `0.0.0.0` inside a container; read the security section before widening it on a host. |
 | `TEAMLINE_PAGE` | the bundled file | path to the operator page, if you want to serve your own. |
 | `TEAMLINE_URL` | `http://127.0.0.1:3790` | where the **client** looks for the broker — used by `teamline_cli.py` and `teamline_feed.py`. |
-| `TEAMLINE_PARTY` | `alpha` | which team the **client** claims to be. `--party` overrides it. |
+| `TEAMLINE_PARTY` | `alpha` | which team the **client** claims to be. `teamline_feed.py` also takes `--party`, which overrides it; `teamline_cli.py` reads the variable only. |
 
 ### If you move the port, move it in two places
 

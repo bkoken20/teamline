@@ -210,6 +210,20 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-24-doc", suite="e2e", file="README.md",
+         find="The broker reads the first five, a",
+         repl="The broker reads the first four, a",
+         must_fail="the configuration prose counts the variables each side reads, correctly",
+         why="restores the miscount: seven rows, five of them read by the broker, described as four"),
+
+    dict(id="R-24-code", suite="e2e", file="teamline/teamline_broker.py",
+         find='PAGE_FILE = os.environ.get("TEAMLINE_PAGE"',
+         repl='PAGE_FILE = os.environ.get("TEAMLINE_PAGE_RENAMED"',
+         must_fail="the configuration prose counts the variables each side reads, correctly",
+         why="stops the broker reading the fifth variable, so the prose's count is right about a "
+             "document that no longer describes the code. The direction that actually happens: a "
+             "variable is retired or moved and the configuration section is not reopened"),
+
     dict(id="R-14-doc", suite="e2e", file="docs/PROTOCOL.md",
          # The WHOLE bullet, all six lines. Replacing only its first line left the rest of the
          # paragraph still naming both feed types, so the check stayed green and the runner reported

@@ -1402,6 +1402,43 @@ document that was wrong.
 
 ---
 
+## R-24 — the configuration section contradicted its own table, and misattributed a flag
+
+**Severity:** low, and it is the section a reader follows while deciding what to set where.
+
+**What was wrong.** Two sentences. *"The broker reads the first four, a client reads the last two"* —
+of a table with **seven** rows, five of which the broker reads: `TEAMLINE_PAGE` is the fifth, and the
+broker is what serves the page. And `` `--party` overrides it ``, written in the row about the
+**client's** team, where the CLI has no such flag: only the feed client takes it.
+
+**The test that should have caught it.** `C-L1` established that this README counts itself and that
+nothing checked the counts — and then checked the counts it happened to think of: files, suites, line
+counts. This is the same defect one row down, in a sentence that also counts.
+
+**The fix.** Five, not four. And the flag is attributed to the script that has it, with a note that
+the other reads the variable only.
+
+**The check derives the split from `os.environ` calls, not from the variable name.** A first version
+matched the name anywhere in the file and mis-attributed one immediately: the feed client contains the
+string `TEAMLINE_PORT` inside an error message whose whole purpose is to tell you it is the *broker's*
+knob. Matching names would have turned a correct sentence into a false failure.
+
+It also went looking for a sentence that was not there. The prose wraps across two lines, and the
+first regex assumed single spaces — so it found nothing and reported *(None, None)*, which is "the
+prose is missing" rather than "the prose is wrong". Same verdict, different reason, and the
+difference is the whole value of the check. It reads whitespace-normalised text now.
+
+**The walk did not re-derive; it measured.** Confirming this fix with the same regex would only prove
+the regex agrees with itself. Instead `TEAMLINE_PAGE` was pointed at a file written for the purpose
+and `GET /` served it — so the broker reads the fifth row — and each client was asked for its own
+`--help`, which is how the flag was attributed rather than by grepping for a string.
+
+**The checks.** `R-24-doc` restores the miscount. `R-24-code` stops the broker reading the fifth
+variable, leaving the prose right about a document that no longer describes the code — the direction
+that actually happens, where a variable is moved and the configuration section is never reopened.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1411,7 +1448,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 157 of the 191 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 158 of the 192 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

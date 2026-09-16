@@ -204,6 +204,14 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-21", suite="e2e", file="docs/PROTOCOL.md",
+         find="set_running(team, {session_id: running})",
+         repl="the host liveness sweep",
+         must_fail="every public method of the state machine is reached by shipped code, or named in the contract",
+         why="stops the contract naming the one state-machine capability no route reaches. The method "
+             "is then dead code again by the only definition that matters to a reader: nothing calls "
+             "it and nothing says what it is for"),
+
     dict(id="R-19", suite="e2e", file="teamline/switchboard.py",
          find='            if r.get("host", r.get("session_id") not in ("ws", "wait")):',
          repl='            if r.get("session_id") not in ("ws", "wait", "x"):',

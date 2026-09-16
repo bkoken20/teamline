@@ -97,7 +97,7 @@ def main():
     sb.set_now("beta", "deep-work", "still on the parser")
     dd = dirmap(sb)["beta/deep-work"]
     ck("sw_now refreshes the line and resets its age", dd["now"].startswith("still on the parser") and dd["now_age_s"] < 1, dd)
-    sb.set_now_derived("beta", "deep-work", "goal: parser")
+    sb.set_now_derived_by_sid("sess-1", "goal: parser")   # the door /hook/now serves; there is no other
     ck("model's now wins while younger than 30 min", dirmap(sb)["beta/deep-work"]["now"].startswith("still on the parser"))
     clk.t += 31 * M
     dd = dirmap(sb)["beta/deep-work"]

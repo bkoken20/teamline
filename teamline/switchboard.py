@@ -550,21 +550,9 @@ class Switchboard:
         self._commit("retired", ext=ext, reason="operator", by=OPERATOR)
         return dict(ok=True, ext=ext)
 
-    def operator_wipe_voicemail(self, ext):
-        n = 0
-        for v in [v for v in self._held if v["to"] == ext]:
-            self._commit("voicemail_expired", ext=ext, msg_id=v["id"], by=OPERATOR)
-            n += 1
-        return dict(ok=True, wiped=n)
-
     def set_now(self, team, name, text):
         e = self._mine(team, name)
         self._commit("now", ext=e["ext"], source="model", text=(text or "")[:NOW_MAX])
-        return self._entry(e)
-
-    def set_now_derived(self, team, name, text):
-        e = self._mine(team, name)
-        self._commit("now", ext=e["ext"], source="derived", text=(text or "")[:NOW_MAX])
         return self._entry(e)
 
     def ext_by_sid(self, sid):
@@ -843,16 +831,9 @@ class Switchboard:
     def pending_for(self, ext):
         return [dict(e) for e in self._outbox if e["to"] == ext]
 
-    def pending_for_team(self, team):
-        return [dict(e) for e in self._outbox if e["to"].split("/", 1)[0] == team]
-
     def session_of(self, ext):
         e = self._ext.get(ext)
         return e["session_id"] if e else None
-
-    def running_of(self, ext):
-        e = self._ext.get(ext)
-        return bool(e and e["running"])
 
     def mark_delivered(self, msg_id, session_id, host=False):
         """host: a real agent session accepted this message. Only the broker's ack path knows that,

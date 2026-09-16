@@ -362,6 +362,51 @@ async def run(tmp):
     ck("no file in this tree assembles a string out of literal fragments",
        not _asm, sorted(set(_asm))[:8])
 
+    # ---- a method that ships must be reachable from something that ships, or be named ------------
+    # Five public methods of the state machine had no caller anywhere in the package. Dead code in a
+    # published repository is not merely clutter: a reader cannot tell a capability the broker offers
+    # from one it merely defines, and neither can the maintainer -- one of the five drives a branch a
+    # fix-log entry describes as a live distinction. The rule is the smallest one that keeps that
+    # readable: reached by shipped code, or NAMED in the contract with what serves it. The allowlist
+    # is the contract itself, never a copy kept here -- a check that names a file and then keeps its
+    # own list of what is in it is a check about the list (R-16).
+    # Read with the AST, not with a text search: a method NAMED IN A COMMENT is not a method that is
+    # called, and the first version of this check cleared `operator_retire` on the strength of a
+    # comment mentioning it. String constants count, because a dispatch table may reach a method by
+    # name -- an identifier or a literal is a reference, prose is not.
+    def _idents(src):
+        out = set()
+        for n in _ast0.walk(_ast0.parse(src)):
+            if isinstance(n, _ast0.Attribute):
+                out.add(n.attr)
+            elif isinstance(n, _ast0.Name):
+                out.add(n.id)
+            elif isinstance(n, _ast0.Constant) and isinstance(n.value, str):
+                out.add(n.value)
+        return out
+    _sw_src = io.open(os.path.join(PKG, "switchboard.py"), encoding="utf-8").read()
+    _pub = [n.name for c in _ast0.parse(_sw_src).body if isinstance(c, _ast0.ClassDef)
+            for n in c.body
+            if isinstance(n, (_ast0.FunctionDef, _ast0.AsyncFunctionDef)) and not n.name.startswith("_")]
+    _reached = set()
+    for _f in sorted(os.listdir(PKG)):
+        if _f.endswith(".py"):
+            _reached |= _idents(io.open(os.path.join(PKG, _f), encoding="utf-8").read())
+    _contract = io.open(os.path.join(os.path.dirname(PKG), "docs", "PROTOCOL.md"), encoding="utf-8").read()
+    # "named in the contract" means named AS CODE there -- an identifier inside one of its code
+    # spans or fenced blocks, not an exact spelling: `set_running(team, ...)` names set_running,
+    # while the surrounding prose does not, and `set_running_ext` is a different identifier.
+    # The fenced blocks come out FIRST. Pairing single backticks over the whole file walks straight
+    # through the ``` fences, and after an odd number of them every span is paired with the wrong
+    # partner -- which read as "the contract does not name it" for text that was plainly there.
+    _fences = _re0.findall('```(.*?)```', _contract, _re0.S)
+    _rest = _re0.sub('```.*?```', "", _contract, flags=_re0.S)
+    _spans = _re0.findall('`([^`]+)`', _rest)
+    _in_doc = {t for sp in _fences + _spans for t in _re0.findall("[A-Za-z_][A-Za-z0-9_]*", sp)}
+    _unreached = [m for m in _pub if m not in _reached and m not in _in_doc]
+    ck("every public method of the state machine is reached by shipped code, or named in the contract",
+       not _unreached, dict(unreached=_unreached, public=len(_pub)))
+
     # ---- shipped text must point at things that are here, and instructions that work ---------------
     # Four references named documents that are not in this repository at all, and one quoted a section
     # of a file that IS here and does not contain it. The fix log says the private review queue "did

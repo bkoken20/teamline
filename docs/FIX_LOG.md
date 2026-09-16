@@ -1738,6 +1738,12 @@ neighbouring entry closed.
 **The check.** `R-18` removes the two lines and the new check goes red, while `A4`'s own two claims go
 on firing — the ordering it guards was never the problem.
 
+**Where the evidence comes from, added by `R-21`.** Both this entry and `A4` read as though a host
+reports sessions absent in the course of ordinary operation. It does not, in this repository: the only
+entry point is `set_running`, and **no route calls it** — this broker learns liveness from the feed's
+own keepalives. The branch is real, and the unit suite drives it, but a reader should not infer a
+producer that is not here. PROTOCOL §3 now states that plainly, under *Two capabilities with no route*.
+
 ---
 
 ## R-20 — "two separate leaks" was a count, not a survey
@@ -2172,6 +2178,60 @@ the check goes red.
 
 **The limit, stated.** A watcher that never acks at all still produces no signal. That is silence
 rather than a spoof, and the ring timer covers it at 90 s.
+
+---
+
+## R-21 — the state machine shipped six public methods nothing reached
+
+**Severity:** low, and it is a reader's problem before it is a defect: nothing lets you tell a
+capability the broker offers from one it merely defines. The review listed five. There were six.
+
+**What was wrong.** `set_running`, `operator_retire`, `operator_wipe_voicemail`, `pending_for_team`,
+`running_of` -- and, found by the check rather than by the review, `set_now_derived`. No module in the
+package calls any of them.
+
+**The rule applied, stated once so the dispositions are not six opinions.** A method ships only if
+something reaches it, or the contract names it as a capability with no route -- and **the contract may
+name only what a check exercises**. Naming an untested method would be claiming a capability nobody
+has verified, which is the class of defect this whole log exists to keep out.
+
+| method | test coverage | disposition |
+|---|---|---|
+| `operator_wipe_voicemail` | none | deleted |
+| `pending_for_team` | none | deleted |
+| `running_of` | none | deleted |
+| `set_now_derived` | two checks | deleted; the checks re-pointed |
+| `set_running` | sixteen call sites | kept, named in PROTOCOL |
+| `operator_retire` | one check | kept, named in PROTOCOL |
+
+`set_now_derived` was the by-name twin of `set_now_derived_by_sid`, which the `/hook/now` route does
+serve. Its two checks pin the model-versus-derived precedence rule, which is real contract behaviour,
+so they were re-pointed through the door production uses -- better coverage than before, not less.
+
+**Why the other two stayed.** `set_running` is the only entry point for **host evidence**: a host
+reporting a session absent is GONE at once, where a quiet socket gets the 90-second grace period.
+That distinction is what `A4` drew and `R-18` repaired days ago, and deleting the method would have
+deleted a documented behaviour and sixteen checks along with it. `operator_retire` is the only
+operator-initiated retirement. Both are now in PROTOCOL §3 under *Two capabilities with no route*,
+which says what they do **and that nothing here calls them**.
+
+**The claim each entry was making without saying so.** `R-18` and `A4` read as though a host reports
+sessions absent in the ordinary course of operation. It does not happen in this repository at all.
+Both entries now say where the evidence would come from, and that no route produces it.
+
+**The check, which is the point of the entry.** A one-off assertion would have closed six names and
+let the seventh through. The check reads the state machine's public methods from its AST, the
+identifiers every shipped module references from theirs, and the contract's code spans, and requires
+every method to be in one of the last two sets. It goes red on a method that is added and never wired.
+
+**Two ways it was wrong before it was right, both caught by running it.**
+It first cleared `operator_retire` because a **comment** mentions the name -- a text search reads my
+own prose as a caller, so it reads identifiers from the AST now. It then reported `set_running` as
+unnamed while the contract plainly named it: pairing single backticks across the whole document walks
+through the fenced blocks, and after an odd number of them every span pairs with the wrong partner.
+A check that reports a false red costs exactly what one that cannot fail costs.
+
+**The check.** `R-21` removes the contract's naming of `set_running`; the check goes red.
 
 ---
 

@@ -118,6 +118,21 @@ Re-registering a name replaces any holder that is not LIVE -- STALE, GONE or UNR
 LIVE one is refused, so two sessions can never share a lane. UNREACHABLE is the easiest of the
 three to reach by accident: it is what a lane reads when it registered and holds no feed.
 
+### Two capabilities with no route
+
+The state machine offers two operations that **no route in this broker calls**. They are recorded
+here because a published repository should let a reader tell a capability the broker offers from one
+it merely defines, and because the hygiene table above is otherwise incomplete: it gives silence as
+the only way a lane goes GONE.
+
+| operation | what it does | what reaches it here |
+|---|---|---|
+| `set_running(team, {session_id: running})` | a **host liveness sweep**. A session the host does not list goes GONE at once, and the lane records `gone_reason='host'` — the host saying a session is absent is evidence, where a quiet socket is only silence and gets the 90-second grace period. A lane marked gone this way stays GONE if its socket drops afterwards. | nothing. This broker learns liveness from the feed's own keepalives (`set_running_ext`), and no HTTP route or tool carries a host's session list. |
+| `operator_retire(ext)` | ends the lane's open calls and retires it, writing a `retired` row tagged `by=operator`. | nothing. Retirement happens on the timings in the table above; the operator page can say a line into a call, not retire a lane. |
+
+Both are exercised by the unit suite, so what is written here is what they do. Anything else the
+state machine once offered and nothing reached has been removed rather than described.
+
 ## 4. Calls
 
 `ring → answer → lines → hangup`, one open call per extension. Five minutes of silence inside an open

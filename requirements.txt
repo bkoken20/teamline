@@ -1,12 +1,18 @@
 # Pins are what the broker has actually been run on in production, not the newest available.
 # Tested on Python 3.13.1.
 #
-# The broker needs all four. A client that only holds a feed needs `websockets` alone; a client
-# that calls the sw_* tools over MCP also needs `mcp` (which brings httpx2 with it).
+# The broker needs the first four. A client that only holds a feed needs `websockets` alone; a
+# client that calls the sw_* tools over MCP also needs `mcp` and `httpx2`.
 mcp==2.1.1
 starlette==1.6.0
 uvicorn[standard]==0.34.0
 websockets==16.1.1
+
+# `teamline_cli.py` imports httpx2 DIRECTLY. It arrives with `mcp` anyway, which is precisely why it
+# was missing here: everything worked, so nothing said otherwise. Relying on a package you did not
+# ask for is relying on somebody else's dependency list -- the day `mcp` stops needing it, the CLI
+# stops importing, and the pin above would still look complete.
+httpx2==2.12.0
 
 # uvicorn's [standard] extra is not optional: the feed is a WebSocket, and the plain distribution
 # starts cleanly and then refuses every /ws upgrade -- a broker that is up and answers nothing.

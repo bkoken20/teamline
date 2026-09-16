@@ -249,8 +249,19 @@ async def run(tmp):
     # NO HIDDEN DEPENDENCIES. Every third-party import in the package must be one this project
     # actually declares, so a clone installs what requirements.txt says and nothing else. Read from
     # the source rather than sys.modules, which would only show what this test happened to import.
+    # DECLARED MEANS "IN requirements.txt", read from the file rather than typed here. The set used to
+    # be a literal, and it had drifted both ways: it allowed `anyio`, which nothing in the package
+    # imports, and it allowed `httpx2`, which the CLI imports directly and the file did not list --
+    # so the one thing this check exists to catch was sitting inside its own allowance. A check that
+    # names a file and then keeps its own copy of the file is a check about the copy.
     import ast
-    declared = {"mcp", "starlette", "uvicorn", "websockets", "httpx2", "anyio"}
+    # `os.path.dirname(PKG)`, not `_root`: that name is bound further down this function, and using
+    # it here raised UnboundLocalError inside the check -- which is not a red check, it is no check.
+    _req = io.open(os.path.join(os.path.dirname(PKG), "requirements.txt"), encoding="utf-8").read()
+    declared = {_re0.split(r"[=<>!\[;]", ln.strip())[0].strip().lower()
+                for ln in _req.splitlines() if ln.strip() and not ln.lstrip().startswith("#")}
+    ck("the declared set is read from requirements.txt, and that file lists something",
+       len(declared) >= 4, sorted(declared))
     stdlib = set(getattr(sys, "stdlib_module_names", ()))
     undeclared = {}
     for _mod in sorted(os.listdir(PKG)):

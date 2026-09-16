@@ -166,6 +166,14 @@ PERTURBATIONS = [
          why="restates the counts as figures the code does not support. The original defect was a "
              "tests claim out by 70%, understating the suite it was describing"),
 
+    dict(id="R-16", suite="e2e", file="requirements.txt",
+         find="httpx2==2.12.0",
+         repl="# httpx2 arrives with mcp anyway",
+         must_fail="the package imports nothing it does not declare (no hidden dependencies)",
+         why="undeclares a package the CLI imports directly. The check used to keep its OWN copy of "
+             "the declared set, and that copy allowed httpx2 -- so the one thing it exists to catch "
+             "was sitting inside its own allowance, along with anyio, which nothing imports at all"),
+
     dict(id="R-15", suite="e2e", file="teamline/teamline_broker.py",
          find="        await ws.close(code=4000)          # no team-level address: a feed names its extension",
          repl="        await ws.accept()                  # accepted, then silent -- the case that used to pass\n"

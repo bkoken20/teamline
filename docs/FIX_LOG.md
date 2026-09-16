@@ -2034,6 +2034,37 @@ The new one fails, which is the whole difference between the two.
 
 ---
 
+## R-16 — the check that enforces `requirements.txt` kept its own copy of `requirements.txt`
+
+**Severity:** low, and it had drifted in **both** directions, which is the argument against copies.
+
+**What was wrong.** The "no hidden dependencies" check compared the package's imports against a set
+written in the test:
+
+```
+  declared = {"mcp", "starlette", "uvicorn", "websockets", "httpx2", "anyio"}
+```
+
+`requirements.txt` listed four of those. `anyio` was allowed and is imported by nothing. `httpx2` was
+allowed and **is imported directly by `teamline_cli.py` while the file did not list it** — so the one
+thing this check exists to catch was sitting inside its own allowance, and had been since it was
+written. A check that names a file and then keeps its own copy is a check about the copy.
+
+**The fix, in two parts.** The set is parsed from `requirements.txt`, so there is nothing left to
+drift. And the missing dependency is **declared rather than excused**: `httpx2` arrives with `mcp`
+anyway, which is exactly why nobody noticed — everything worked. Relying on a package you did not ask
+for is relying on somebody else's dependency list, and the day `mcp` stops needing it the CLI stops
+importing while the pins still look complete.
+
+**A check that raises is not a check that failed.** The first version read the repository root from a
+name bound further down the same function, so it raised `UnboundLocalError` *inside* the check — no
+PASS, no FAIL, just a traceback where a verdict should be. It reads the package's own parent
+directory now.
+
+**The check.** `R-16` undeclares `httpx2` again; the check goes red naming the module that imports it.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -2043,7 +2074,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 169 of the 212 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 170 of the 213 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

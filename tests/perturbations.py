@@ -166,6 +166,18 @@ PERTURBATIONS = [
          why="restates the counts as figures the code does not support. The original defect was a "
              "tests claim out by 70%, understating the suite it was describing"),
 
+    dict(id="R-3", suite="unit", file="tests/test_switchboard.py",
+         # It retires the fixture rather than deleting the lines that build it. Deleting them makes
+         # the call and the leave below raise, the suite stops before the check runs, and the runner
+         # reports NORUN -- untested, which is not the same as red. Ageing the board past the idle
+         # retirement empties it exactly as it was originally empty, and every later line still runs.
+         find="    live_exts = {e[\"ext\"] for e in sb.directory()}\n",
+         repl="    clk.t += 25 * H\n    sb.tick()\n    live_exts = {e[\"ext\"] for e in sb.directory()}\n",
+         must_fail="the replay fixture is NOT empty -- these checks compared set() with set() before",
+         why="empties the state the replay section reads, which is how it was: everything registered "
+             "earlier has been retired by that point, so the suite's HEADLINE property -- restart the "
+             "broker and the ledger rebuilds it -- was asserted by set() == set() and all([])"),
+
     dict(id="C-L1c", suite="e2e", file="tests/perturbations.py",
          # It targets B3's line, not the claim above it: quoting that one made this claim's own `find`
          # match twice -- itself and its target -- and the runner refused it as AMBIG. A perturbation

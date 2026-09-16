@@ -209,12 +209,50 @@ def main():
        r["ok"] and any(x["event"] == "retired" and x.get("by") == "operator" for x in sb.ledger_rows()))
 
     # ---- 7. ledger is the source of truth
+    # THE STATE HAS TO EXIST BEFORE REPLAYING IT MEANS ANYTHING. Everything registered above has been
+    # retired by this point -- the 24-hour tick, the operator retire, and the 11-minute GONE sweep
+    # between them empty the directory -- so these two checks used to compare `set()` with `set()` and
+    # run `all([])` over `[]`. Both passed, on nothing. That is the suite's HEADLINE property, the one
+    # the README sells: restart the broker and the ledger rebuilds it.
+    #
+    # So the state is built here rather than inherited: lanes on two teams, an open call, and held
+    # voicemail, all committed to the same ledger the replay reads.
+    sb.register("beta", "replay-a", now="working", session_id="sess-ra")
+    sb.register("beta", "replay-b", now="working", session_id="sess-rb")
+    sb.register("alpha", "replay-c", now="holding", feed=True, sid="s-rc")
+    rr = sb.call("alpha", "replay-c", "beta/replay-a", "replay subject", "replay opening")
+    sb.answer("beta", "replay-a")
+    sb.leave("alpha", "replay-c", "beta/replay-b", "a message that must survive a restart")
+    live_exts = {e["ext"] for e in sb.directory()}
+    ck("the replay fixture is NOT empty -- these checks compared set() with set() before",
+       len(live_exts) >= 3 and len(sb.active_calls()) >= 1,
+       (sorted(live_exts), len(sb.active_calls())))
+
     SB2, sb2, _ = fresh(tmp, clk)
     ck("a restart rebuilds the directory and active calls from the ledger",
        {e["ext"] for e in sb2.directory()} == {e["ext"] for e in sb.directory()}
        and len(sb2.active_calls()) == len(sb.active_calls()), ({e["ext"] for e in sb2.directory()}, {e["ext"] for e in sb.directory()}))
-    ck("alpha feed presence is NOT rebuilt (a socket that is gone is gone)",
-       all(e["hygiene"] == "GONE" for e in sb2.directory() if e["team"] == "alpha"), sb2.directory())
+    ck("...and the rebuilt call is the same call, in the same state, with its subject",
+       [(c["call_id"], c["state"], c["subject"]) for c in sb2.active_calls()]
+       == [(c["call_id"], c["state"], c["subject"]) for c in sb.active_calls()],
+       (sb2.active_calls(), sb.active_calls()))
+    # `pending_for` on a lane that does not exist returns nothing rather than raising, which is what
+    # lets this check FAIL instead of crashing when the fixture above is missing. That distinction is
+    # not cosmetic: a check that raises takes the whole suite down before the later ones run, and a
+    # perturbation aimed at it then reports "the claim is untested" rather than proving anything.
+    ck("...and an undelivered message is still owed after the restart",
+       [e["text"] for e in sb2.pending_for("beta/replay-b")]
+       == [e["text"] for e in sb.pending_for("beta/replay-b")] != [],
+       (sb2.pending_for("beta/replay-b"), sb.pending_for("beta/replay-b")))
+    # The silence window starts again at the restart: a replayed lane reads LIVE for those 90 seconds
+    # because nothing has been silent yet from the new process's point of view. Asserting GONE at the
+    # instant of replay fails for that reason and not because presence was rebuilt -- measured, and
+    # worth the two lines, because "a socket that is gone is gone" is true only after the window.
+    clk.t += 100
+    sb2.tick()
+    _alpha2 = [e for e in sb2.directory() if e["team"] == "alpha"]
+    ck("alpha feed presence is NOT rebuilt (a socket that is gone is gone, once the window passes)",
+       _alpha2 and all(e["hygiene"] == "GONE" for e in _alpha2), _alpha2)
 
     # ---- 7b. hook-derived now (operator: sessions must update when a new task starts)
     SBh, sh, ch = fresh(tempfile.mkdtemp(prefix="sb_"))

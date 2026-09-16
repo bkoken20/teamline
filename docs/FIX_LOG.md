@@ -1827,6 +1827,55 @@ on the substituted counts.
 
 ---
 
+## R-3 — the suite's headline property was asserted against an empty board
+
+**Severity:** high. This is the claim the README makes for the whole design — *the ledger is the
+source of truth; restart the broker and it rebuilds* — and it was being proved by comparing nothing
+with nothing.
+
+**What was wrong.** By the time the replay section runs, everything registered earlier has been
+retired: a 24-hour tick, an operator retire, and an 11-minute GONE sweep between them empty the
+directory. So
+
+```
+  {e["ext"] for e in sb2.directory()} == {e["ext"] for e in sb.directory()}    ->  set() == set()
+  all(e["hygiene"] == "GONE" for e in sb2.directory() if e["team"] == "alpha") ->  all([])
+```
+
+Both passed. Neither could have failed.
+
+**The test that should have caught it.** It is the test. There is no outer check that a fixture is
+non-empty, and a vacuous assertion looks exactly like a passing one in the output.
+
+**The fix.** The section builds its own state — lanes on two teams, an open call, an undelivered
+message — and asserts **that the fixture is not empty** before using it. Then the replay comparison
+means something, and two further properties are checked that nothing checked before: the rebuilt call
+is the same call in the same state with its subject, and a message still owed is still owed after the
+restart.
+
+**Two things the newly-meaningful checks then taught.**
+
+*A replayed lane reads LIVE at the instant of restart.* Asserting "a socket that is gone is gone"
+immediately after replay fails — not because presence was rebuilt, but because the silence window
+starts again with the new process: nothing has been silent yet from its point of view. It reads GONE
+100 seconds later. Measured before the check was changed, because the alternative was to weaken an
+assertion to fit a result.
+
+*Voicemail to a reachable lane is delivered, not held.* The first version asserted held voicemail
+survives a restart; the recipient was reachable, so there was none. What survives — and is now
+checked — is the message still owed in the outbox.
+
+**A check should FAIL when its fixture is missing, not crash.** The first perturbation deleted the
+lines that build the state, and the call below them raised: the suite stopped before the check ran
+and the runner reported `NORUN` — untested, which is not red. The perturbation now ages the board past
+idle retirement, which empties it exactly as it was originally empty while every later line still
+runs. The checks read the board through calls that return nothing for a missing lane rather than
+raising, so they go red rather than taking the suite down.
+
+**The check.** `R-3` empties the replay fixture; the guard goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1836,7 +1885,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 161 of the 202 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 163 of the 205 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

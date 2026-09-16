@@ -222,10 +222,19 @@ async def run(tmp):
     # default, and the broker then wrote its ledger into a directory nobody could find.
     ck("the broker's default root is a usable path (no control characters, no stray whitespace)",
        bool(B.ROOT) and not any(c in B.ROOT for c in "\t\r\n") and B.ROOT.strip() == B.ROOT, repr(B.ROOT))
+    # THE BROKER IS WHAT HAS TO CREATE IT. This check used to call `os.makedirs` itself and then
+    # assert the directory existed -- it proved that `os.makedirs` works, never touched the broker,
+    # and could not fail. The name promised the opposite, which is worse than no check: it is the
+    # exact shape B5 and E-L1 say this project learned to avoid, sitting in the suite a stranger
+    # reads to judge that claim.
     _probe_root = os.path.join(tmp, "made", "on", "demand")
-    os.makedirs(_probe_root, exist_ok=True)
+    _existed_before = os.path.isdir(_probe_root)
+    B.build(root=_probe_root, ring_timeout_s=90, ack_timeout_s=1.0, feed_gone_s=90.0, state_every_s=5.0)
     ck("...and a nested root that does not yet exist is created rather than crashing the broker",
-       os.path.isdir(_probe_root), _probe_root)
+       not _existed_before and os.path.isdir(_probe_root)
+       and os.path.isdir(os.path.join(_probe_root, "calls")),
+       (_existed_before, os.path.isdir(_probe_root),
+        os.path.isdir(os.path.join(_probe_root, "calls"))))
     # NO HIDDEN DEPENDENCIES. Every third-party import in the package must be one this project
     # actually declares, so a clone installs what requirements.txt says and nothing else. Read from
     # the source rather than sys.modules, which would only show what this test happened to import.

@@ -1876,6 +1876,37 @@ raising, so they go red rather than taking the suite down.
 
 ---
 
+## R-4 — a check that named the broker's behaviour proved that `os.makedirs` works
+
+**Severity:** high within the tests group, for the same reason as `R-3`: it could not fail, and it
+claimed something it never tested.
+
+**What was wrong.** Four lines:
+
+```
+  _probe_root = os.path.join(tmp, "made", "on", "demand")
+  os.makedirs(_probe_root, exist_ok=True)
+  ck("...and a nested root that does not yet exist is created rather than crashing the broker",
+     os.path.isdir(_probe_root), _probe_root)
+```
+
+The test creates the directory and then asserts the directory exists. `B.build()` is never called.
+The name promises the broker handles a root that is not there; the code proves the standard library
+does — and it would have passed with the broker deleted.
+
+**The test that should have caught it.** None, and the shape is the one this log keeps returning to:
+a check whose name and whose body are about different things reads as coverage in every summary.
+
+**The fix.** It builds a broker at a nested path that does not exist, and asserts the path **and** the
+transcript directory beneath it appear afterwards — plus that neither existed beforehand, so the
+assertion cannot be satisfied by a leftover from an earlier run.
+
+**The check.** `R-4` stops the broker creating the transcript directory. The check goes red — where
+against the old version it would have changed nothing whatsoever, which is the tidiest possible
+demonstration of what was wrong with it.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

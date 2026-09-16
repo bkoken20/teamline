@@ -166,6 +166,14 @@ PERTURBATIONS = [
          why="restates the counts as figures the code does not support. The original defect was a "
              "tests claim out by 70%, understating the suite it was describing"),
 
+    dict(id="R-4", suite="e2e", file="teamline/switchboard.py",
+         find="        os.makedirs(calls_dir, exist_ok=True)\n",
+         repl="",
+         must_fail="...and a nested root that does not yet exist is created rather than crashing the broker",
+         why="stops the broker creating the transcript directory under a root that does not exist "
+             "yet. The old check made the directory ITSELF and then asserted it existed, so this "
+             "perturbation would have changed nothing at all -- which is the defect"),
+
     dict(id="R-3", suite="unit", file="tests/test_switchboard.py",
          # It retires the fixture rather than deleting the lines that build it. Deleting them makes
          # the call and the leave below raise, the suite stops before the check runs, and the runner

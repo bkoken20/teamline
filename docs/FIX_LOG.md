@@ -1085,6 +1085,65 @@ turns it red — claims `R-2-row`, `R-2-observer` and `R-2-refusal`.
 
 ---
 
+## R-9 — the shipped source read as one household's incident diary
+
+**Severity:** medium by a general measure, high by this repository's own: it is what a stranger reads
+first, and none of it is explained anywhere here.
+
+**What was wrong.** Comments dated to a day. Constants stamped with the wall-clock minute somebody
+chose them. Decisions attributed to "the operator", a person this repository never introduces. And
+words used as though the reader already knew them — a module that is not in this package, another
+project's handover file, the name of a chat tab. Re-derived against the tree as it stands, because
+the review that found it predates two other fixes and its list was partly stale: **58 sites across
+ten files, and 5 check names.**
+
+Check names are the sharp case. They are **printed by every run**, so the first evidence a reader
+collects about this project announced `reply Q6` and `the DM tab` — a numbered answer in a
+conversation nobody else was part of, and a tab in an application that is not this one.
+
+**The test that should have caught it.** None existed, and nothing in the suite was of this class.
+Which is why it survived a de-identification pass, a README audit and two cold reviews: every one of
+those looked for *names*, and this is not a name. It is provenance — true, verifiable, and useless to
+anyone who was not there.
+
+**The fix.** Keep the engineering fact, drop the provenance. `# now-line cap: 120 truncated real
+now-lines` says everything the date and the minute were standing in for, and says it to a reader who
+cannot see either. Where a comment recorded a real measurement, the measurement stays and only the
+day goes.
+
+One of the sites was a different defect wearing the same clothes: the feed contract's docstring
+described the two feed types **by team name** — the privilege `B1` removed from the code and left
+standing in the prose beside it. It now names the two behaviours, and says the distinction comes from
+how a feed registered rather than from what it is called.
+
+**Attacking the check found its blind spot.** The first version scanned `teamline/` and `tests/`,
+which is D-L1's mistake exactly — that scan used an extension allowlist and was quietly skipping the
+Dockerfile, the LICENSE and a shipped `.js`. It now walks the whole tree, with `docs/` as the single
+exclusion, and that exclusion is a real distinction rather than a convenience: a fix log **records**
+when something was decided, which is the opposite of a comment that merely happens to be dated.
+
+**What this does NOT claim.** It matches ISO dates and `HH:MM` clock times. "8 Sept", "half past
+seven" and "last Tuesday" all pass it. It is a regression guard on the forms that were actually
+there, not a proof that no provenance remains.
+
+**The walk.** A change made almost entirely of comments has one hazard in each direction: an edit
+meant for a comment that lands on code, and a renamed check that something still refers to by name.
+Both were measured rather than assumed — every changed file's syntax tree was compared with its
+version at `HEAD` with all string literals blanked, and every one was **identical**, so no statement,
+operator or name moved; the one file whose tree differs is the one that gained this check. The check
+census: 96 → 96 in the unit suite and 73 → 74 in the end-to-end, with five renamed and none lost, and
+all 34 perturbation claims still name a check that exists.
+
+**The checks.** Claim `R-9-source` puts a dated comment back into the package; `R-9-name` puts a clock
+back into a check name, breaking the *unit* file while running the *end-to-end* suite, because that is
+where the check lives and it reads the other file's names rather than its own output. Neither claim
+can spell a date, because the claims file is itself inside the tree this check walks — written there,
+it would make the check red for ever and both claims would fire with the perturbation doing nothing.
+The runner formats `{DATE}` and `{CLOCK}` from the clock at run time, so no date and no wall-clock
+time appears anywhere in this repository outside `docs/`.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1094,7 +1153,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 154 of the 181 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 154 of the 182 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

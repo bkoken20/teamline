@@ -90,7 +90,7 @@ def main():
     # ---- 2. directory: now + age, states
     clk.t += 12 * M
     dd = dirmap(sb)["beta/deep-work"]
-    ck("directory shows now WITH its age (load-bearing, reply Q6)",
+    ck("directory shows now WITH its age (load-bearing: a now-line with no age cannot be judged)",
        dd["now"] == "deep work on the parser" and abs(dd["now_age_s"] - 12 * M) < 1, dd)
     ck("directory shows state IDLE, team, last_seen age",
        dd["state"] == "IDLE" and dd["team"] == "beta" and "last_seen_age_s" in dd, dd)
@@ -130,7 +130,8 @@ def main():
 
     # ---- 4. concurrency: second pair in parallel, cap 6 into beta
     # The cap is PER TEAM, counted across every ringing/open call whose callee is on that team.
-    # 3 was the acking team's own answer on how many simultaneous wakes they could absorb; the OPERATOR raised it to 6 on 2026-09-08
+    # 3 was one deployment's answer on how many simultaneous wakes a session could absorb; it was
+    # later raised to 6 on the same grounds -- each wake is answerable, so the cap is comfort not capacity
     # ("increase to 6, each can answer, simultaneously, no problem") -- one live lane each.
     sb.register("beta", "spec-owner", now="spec package", session_id="sess-2")
     sb.register("alpha", "spec-review", now="reviewing the spec", feed=True)
@@ -231,7 +232,7 @@ def main():
     sh.register("beta", "hooked-s", now="model", session_id="session-host-77")
     ch.t += 1                                    # derived must be NEWER than the register-time model line
     sh.set_now_derived_by_sid("session-host-77", "derived via the host session id")
-    ck("a beta ext registered by session_id is found by /hook/now through that id (beta 16:40: sid was null, hook never matched)",
+    ck("an ext registered by session_id is found by /hook/now through that id (with sid null, the hook never matched)",
        dirmap(sh)["beta/hooked-s"]["now"] == "derived via the host session id", dirmap(sh)["beta/hooked-s"])
     sh.set_now("alpha", "hooked", "model refreshed")
     ck("a model line newer than the derived one wins again", dirmap(sh)["alpha/hooked"]["now"] == "model refreshed")
@@ -241,7 +242,7 @@ def main():
     except SBh.SwitchError:
         ck("an unknown sid is refused, not silently dropped", True)
 
-    # ---- 9. etiquette (operator 2026-09-02 16:2x): ring timer holds while the callee is mid-turn;
+    # ---- 9. etiquette: the ring timer holds while the callee is mid-turn;
     #         the caller learns "delivered, peer busy"; in-call silence nudges; orphan cap
     SBe, se, ce = fresh(tempfile.mkdtemp(prefix="sb_"))
     se.register("beta", "slow", now="n", session_id="s-slow")
@@ -309,10 +310,10 @@ def main():
             if e["kind"] != "ring_delivered":            # live: the signal was never delivered before the restart
                 sr_.mark_delivered(e["id"], "x")
     SBr2, sr2, _ = fresh(os.path.dirname(sr_.ledger_path), cr)
-    ck("replay does NOT resurrect a ring_delivered signal for a call that has since ended (live 16:24: two stale pushes)",
+    ck("replay does NOT resurrect a ring_delivered signal for a call that has since ended (seen live: two stale pushes)",
        not any(e["kind"] in ("ring_delivered", "nudge") for e in sr2.pending_for("alpha/c")), sr2.pending_for("alpha/c"))
 
-    # ---- 9b. names come from the directory, never from memory (operator 17:1x: "do not invent session names")
+    # ---- 9b. names come from the directory, never from memory: an invented session name reaches nobody
     try:
         se.call("alpha", "q", "beta/slo", "s", "o")
         ck("a call to a non-existent extension is refused AND the refusal names the closest real ones", False, "no error")
@@ -320,7 +321,7 @@ def main():
         ck("a call to a non-existent extension is refused AND the refusal names the closest real ones",
            "beta/slow" in str(e) and "sw_directory" in str(e), e)
 
-    # ---- 10. rules 7 (ring half) and 9, adopted by the operator 18:5x, enforced by the broker
+    # ---- 10. the receipt-line and refused-call rules, enforced by the broker rather than by etiquette
     SBx, sx, cx = fresh(tempfile.mkdtemp(prefix="sb_"))
     sx.register("beta", "a", now="n", session_id="s-a"); sx.register("alpha", "b", now="n", feed=True)
     sx.register("beta", "c", now="n", session_id="s-c")
@@ -343,7 +344,7 @@ def main():
     ck("...and it is delivered when the peer goes IDLE, addressed to it",
        any(e["kind"] == "voicemail" and "s3" in e["text"] for e in sx.pending_for("beta/c")), sx.pending_for("beta/c"))
 
-    # ---- 11. voicemail counts per extension in the directory (operator 20:0x: "number of messages in each agent's voicemail")
+    # ---- 11. voicemail counts per extension in the directory: how many messages each lane is holding
     SBv, sv, cv = fresh(tempfile.mkdtemp(prefix="sb_"))
     sv.register("beta", "t", now="n", session_id="s-t"); sv.register("alpha", "u", now="n", feed=True)
     sv.set_running("beta", {"s-t": False})
@@ -358,7 +359,7 @@ def main():
         sv.mark_delivered(e["id"], "s-t")
     ck("...and zero after delivery", dirmap(sv)["beta/t"]["pending"] == 0)
 
-    # ---- 12. now-line cap 200 (operator 07:3x: "Raise it to 200")
+    # ---- 12. now-line cap 200: 120 truncated real now-lines
     SBn, sn, _ = fresh(tempfile.mkdtemp(prefix="sb_"))
     long_now = "L" * 180
     sn.register("beta", "n", now=long_now, session_id="s-n")
@@ -366,7 +367,7 @@ def main():
     sn.set_now("beta", "n", "M" * 250)
     ck("a 250-char line is cut at 200", len(dirmap(sn)["beta/n"]["now"]) == 200)
 
-    # ---- 13. voicemail across a RETIRED lane -- the two facts the operator's 2026-09-06 decision
+    # ---- 13. voicemail across a RETIRED lane -- the two facts the no-standby-holder decision
     #          rests on (docs/PROTOCOL.md, "why there is no standby holder").
     #          13a is why hand registration is SAFE: an off box costs a delay, not a message.
     #          13b is why a standby holder on the broker's own host would be UNSAFE as the broker stands.
@@ -418,7 +419,7 @@ def main():
     ck("...and the real session then receives nothing (delivered once, to the wrong holder)",
        not [e for e in got if "swallowed?" in e["text"]], [e["text"][:60] for e in got])
 
-    # ---- 14. a THIRD team: gamma (operator 2026-09-08 "Enable team name gamma")
+    # ---- 14. a THIRD team, gamma: nothing may be special about the first two
     SBc, sc, cc = fresh(tempfile.mkdtemp(prefix="sb_"))
     ck("'gamma' is a known team", "gamma" in SBc.TEAMS, SBc.TEAMS)
     r = sc.register("gamma", "review", now="reviewing the spec", session_id="cx-1")

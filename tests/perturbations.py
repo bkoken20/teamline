@@ -144,7 +144,7 @@ PERTURBATIONS = [
          # string is the list handed to the suite. It used to be a real lane name assembled from two
          # literals, because the scan reads this file's text -- which is R-12: the needle was in the
          # published tree either way, and joining two literals is one line of `ast`.
-         repl="Measured 2026-09-08: beta/{NEEDLE} held 5,",
+         repl="Measured in one deployment: beta/{NEEDLE} held 5,",
          must_fail="no string from the supplied private-name list survives in the publish tree",
          why="puts a name from the list back into a shipped comment, which is the state the "
              "de-identifying rename left four comments in -- the team relabelled, the lane untouched"),
@@ -209,6 +209,25 @@ PERTURBATIONS = [
          why="puts back a phrase naming a specific machine. It survived the lane-name pass because it "
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
+
+    dict(id="R-9-source", suite="e2e", file="teamline/switchboard.py",
+         find="# now-line cap: 120 truncated real now-lines",
+         # `{DATE}` and `{CLOCK}` are substituted by the runner. Written out here they would sit in
+         # the tree the check walks, and it would be red for ever with this claim firing regardless.
+         repl="# now-line cap (operator {DATE} {CLOCK}: raised from 120)",
+         must_fail="no shipped source line or check name is dated, clocked, or names something undefined here",
+         why="puts back a comment stamped with the day and the minute somebody chose a constant. The "
+             "engineering fact -- 120 truncated real now-lines -- is what a reader needs; the date is "
+             "what made the package read as one household's incident diary"),
+
+    dict(id="R-9-name", suite="e2e", file="tests/test_switchboard.py",
+         find="directory shows now WITH its age (load-bearing: a now-line with no age cannot be judged)",
+         repl="directory shows now WITH its age (load-bearing, seen {CLOCK})",
+         must_fail="no shipped source line or check name is dated, clocked, or names something undefined here",
+         why="puts a wall-clock time back into a check NAME, which is the sharp case: names are "
+             "PRINTED by every run, so they are the first thing a reader of the output sees. The file "
+             "broken is the unit suite and the suite RUN is the e2e, because that is where the check "
+             "lives and it reads the other file's names rather than its own output"),
 
     dict(id="R-12", suite="e2e", file="teamline/teamline_broker.py",
          find='SECRET_FIELDS = ("sid", "session_id")',

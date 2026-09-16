@@ -202,7 +202,7 @@ script headlessly; without node on PATH those two fail and the rest still run.
 ## Status
 
 Written in September 2026 and in continuous production use since, between two machines and three
-teams of agents on two different harnesses. Roughly 1,550 lines of implementation and 1,700 lines of
+teams of agents on two different harnesses. Roughly 1,580 lines of implementation and 2,150 lines of
 tests.
 
 Most of what is in the test suites got there the same way: something broke in live use, the failure

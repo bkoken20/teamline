@@ -1,13 +1,14 @@
 """SWITCHBOARD wiring for the broker (inverted delivery): sw_* MCP tools, per-extension feeds,
 delivery by the extension's own feed holder, liveness from keepalives. The broker calls no session's host.
 
-Feed contract (frozen 2026-09-03 08:26 with team beta):
+Feed contract:
   broker -> feed : events {id,to,kind,lane,call_id,text[,part:[i,n]]} (long texts as numbered parts)
   feed -> broker : {"ack": "<msg_id>", "session_id": "...", "accepted": true|false}
                    {"ping": 1, "running": true|false}    keepalive every <= 25 s
                    anything else                          counts as touch
-  alpha feeds (Claude Monitor) never ack: a frame sent = delivered (the app shows it).
-  beta feeds (their watcher) ack; no ack within ack_timeout_s -> delivery_failed, retry with backoff.
+  A NON-ACKING feed never acks: a frame sent counts as delivered.
+  An ACKING feed acks; no ack within ack_timeout_s -> delivery_failed, retry with backoff.
+  Which one a feed is comes from how it registered, never from its team name.
 """
 import asyncio
 import json
@@ -22,7 +23,7 @@ import switchboard as SB          # noqa: E402
 from mcp.server.mcpserver import Context   # noqa: E402
 
 HEADER = "x-teamline-party"
-CHUNK = 300     # the Claude app truncates a Monitor frame at roughly 330-500 chars (measured 16:31)
+CHUNK = 300     # measured: some clients truncate a streamed frame at roughly 330-500 chars
 HOLDER_BUSY = 4003   # "another holder is live" -- RETRYABLE. 4001 stays for the unanswerable
 HOLDER_RETRY_S = 30  # refusals (unknown team, no ext), which a client must never retry.
 
@@ -53,7 +54,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
         h = ctx.headers or {}
         p = (h.get(HEADER) or h.get(HEADER.title()) or "").strip().lower()
         if p not in SB.TEAMS:
-            # SECURITY (operator, 2026-09-08): say WHAT is wrong, never WHICH teams exist. Listing them
+            # SECURITY: say WHAT is wrong, never WHICH teams exist. Listing them
             # hands a caller that guessed wrong the valid names, and the next guess is a disguise.
             raise SB.SwitchError(
                 f"team {p!r} is not enabled on this broker. The team comes from the {HEADER} header "
@@ -179,7 +180,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
             e = sb._ext.get(full)
             held = list(feeds.get(full) or ())
             if held:
-                # ONE HOLDER PER EXTENSION (operator, 2026-09-08: "adopt refuse-second-holder").
+                # ONE HOLDER PER EXTENSION: a second socket on a live lane is refused.
                 # A LIVE incumbent is never evicted -- evicting one lets N clients form a ring, each
                 # replacing the last, which is what would have happened to that lane's five (they share one
                 # session_id, so any identity carve-out routes the real failure case into replace).
@@ -351,8 +352,8 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
 
     # ---------------------------------------------------------------- loops
     def write_state():
-        """broker_state.json for the DM tab's liveness line. If it cannot be written the broker keeps
-        serving and stops stamping (DM reads age > 30 s as UNREACHABLE) -- agreed with DM 08:3x."""
+        """broker_state.json, for an external liveness display. If it cannot be written the broker keeps
+        serving and stops stamping, so a reader treats a stale stamp as UNREACHABLE."""
         t = time.time()
         doc = dict(ts=t, ts_local=SB._ts_local(t), up=True, port=port, extensions=len(sb._ext),
                    calls=len(sb.active_calls()), pending=len(sb._outbox), awaiting_ack=len(awaiting))

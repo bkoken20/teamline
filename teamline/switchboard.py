@@ -2,8 +2,7 @@
 
 Contract: docs/PROTOCOL.md. Pure state:
 every transition is ONE appended ledger row, the ledger is replayed on restart (feed presence
-excepted). Delivery adapters live in the broker. Tests: test_switchboard.py. v1 (teamline_state)
-keeps running beside this until the cut-over.
+excepted). Delivery adapters live in the broker. Tests: test_switchboard.py.
 """
 import asyncio
 import io
@@ -57,16 +56,16 @@ TEXT_MAX = 4000
 # this bounds only what is RETAINED, which existed solely to serve a 200-row operator snapshot.
 # NOTE: the ledger FILE is still unbounded. Compaction is not implemented -- see docs/FIX_LOG.md.
 ROWS_KEPT = 5000
-NOW_MAX = 200                                     # now-line cap (operator 2026-09-03 07:3x: raised from 120)          # etiquette (operator 2026-09-02): silence nudges, orphan cap
+NOW_MAX = 200                                     # now-line cap: 120 truncated real now-lines
 
 
 def _ts_local(t):
-    """Operator's clock (the box's local zone), seconds, no zone label (operator 2026-09-02 16:4x)."""
+    """Local wall clock of the host, in seconds, with no zone label."""
     return _dt.datetime.fromtimestamp(t).strftime("%y-%m-%d %H:%M:%S")
 
 
 def _write_atomic(path, text):
-    """Compute-then-replace: never leaves a truncated file (the HANDOFF zero-byte lesson)."""
+    """Compute-then-replace: an interrupted write never leaves a truncated file behind."""
     d = os.path.dirname(os.path.abspath(path))
     os.makedirs(d, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=d, prefix=".tmp-", suffix=".part")
@@ -407,7 +406,7 @@ class Switchboard:
 
     def _now_of(self, e):
         """Model line wins while younger than 30 min  -- unless a DERIVED line is newer than
-        it: a new task from the operator is newer information (operator, 2026-09-02 15:3x)."""
+        it: a new task from the operator is newer information."""
         t = self.now()
         derived_newer = e["derived"] is not None and e["derived_ts"] > e["now_ts"]
         if e["now"] and not derived_newer and (e["derived"] is None or t - e["now_ts"] <= NOW_MODEL_WINS_S):
@@ -499,7 +498,7 @@ class Switchboard:
         if not sid:
             return None
         # a non-acking ext is bound by `sid` (feed); an acking one by `session_id` (sw_register) --
-        # beta 16:40: the hook matched only sid, so their watcher could never find their ext
+        # Matching only `sid` left a lane registered by session id unreachable from the hook.
         keys = lambda e: [k for k in (e.get("sid"), e.get("session_id")) if k]
         for e in self._ext.values():
             if sid in keys(e):
@@ -599,7 +598,7 @@ class Switchboard:
         h = self._hygiene(p)
         bk, br = self._busy_of(p)
         def refused(state, reason, **extra):
-            # Rule 9 (operator 18:5x): a refused call becomes an ADDRESSED voicemail with the same subject
+            # A refused call becomes an ADDRESSED voicemail with the same subject
             # and opening -- no improvisation by the caller
             self._commit("call_refused", ext=me["ext"], peer=peer, reason=reason, **{k: v for k, v in extra.items() if k == "cap"})
             vm = self.leave(team, name, peer, f"(refused call, peer {reason}) {subject} -- {opening}")
@@ -634,7 +633,7 @@ class Switchboard:
         return e, c
 
     def answer(self, team, name, receipt="received, working on it"):
-        """Rule 7 (ring half, operator 18:5x): an answer CARRIES a receipt line to the caller, mechanically."""
+        """An answer CARRIES a receipt line back to the caller, mechanically."""
         e, c = self._active(team, name, "RINGING")
         if c["callee"] != e["ext"]:
             raise SwitchError("only the callee can answer")
@@ -704,7 +703,7 @@ class Switchboard:
         for c in list(self._calls.values()):
             if c["state"] == "RINGING":
                 # the first-response bound is 90 s of the CALLEE'S IDLE time: while it is mid-turn it
-                # cannot see the ring, so the timer holds (operator etiquette, 2026-09-02)
+                # cannot see the ring, so the timer holds
                 callee = self._ext.get(c["callee"])
                 if not (callee and callee["running"]):
                     c["ring_wait"] += t - c["last_tick"]

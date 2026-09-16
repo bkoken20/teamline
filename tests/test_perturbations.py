@@ -19,6 +19,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -100,8 +101,17 @@ def main():
                 continue
             # Every run gets a one-off needle so the two list-dependent checks actually run; a claim
             # that wants it planted as well writes `{NEEDLE}` into its payload.
+            #
+            # `{DATE}` and `{CLOCK}` are filled the same way and for a sharper reason: a claim that
+            # proves the dated-comment check can fail has to PLANT a date, and this file is inside the
+            # tree that check walks. Spelled here, it would make the check red for ever and the claim
+            # would fire with the perturbation doing nothing. They are formatted from the clock, so
+            # no date and no time appears in this file at all.
             needle = "zz-" + uuid.uuid4().hex[:12]
-            write(path, src.replace(p["find"], p["repl"].replace("{NEEDLE}", needle)).encode("utf-8"))
+            payload = (p["repl"].replace("{NEEDLE}", needle)
+                       .replace("{DATE}", time.strftime("%Y-%m-%d"))
+                       .replace("{CLOCK}", time.strftime("%H:%M")))
+            write(path, src.replace(p["find"], payload).encode("utf-8"))
             out = run_suite(p["suite"], needle)
             fails = failed_checks(out)
             fired = [f for f in fails if p["must_fail"] in f]

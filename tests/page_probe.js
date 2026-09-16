@@ -1,5 +1,5 @@
 // Runs the operator page's own render functions headlessly, so the page can be TESTED and not just
-// parsed. Used by test_switchboard_e2e.py after the 2026-09-08 gamma defect: the page iterated a
+// parsed. Used by test_switchboard_e2e.py after the gamma defect: the page iterated a
 // hard-coded ['alpha','beta'] pair, so a third team would register and never render.
 //
 //   node page_probe.js <page.html> <directory.json>

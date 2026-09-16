@@ -4,8 +4,8 @@
 
 Holds the extension's feed on the broker (default TEAMLINE_URL), prints every frame as one
 JSON line (each line becomes a notification in the session), reconnects forever (2 s cadence), and
-sends a keepalive every 25 s. Exists because the app's Monitor(ws=...) refuses non-loopback private
-addresses (09:02 2026-09-03: "address is in a private, link-local, or cloud-metadata range"), so
+sends a keepalive every 25 s. Exists because some clients refuse to open a WebSocket to a
+non-loopback private address -- private, link-local and cloud-metadata ranges are rejected -- so
 the socket is held by this process instead. Never raises: a dead feed prints a line and retries.
 """
 import argparse
@@ -17,8 +17,8 @@ import time
 import urllib.parse
 
 DEFAULT_URL = os.environ.get("TEAMLINE_URL", "http://127.0.0.1:3790")
-# The TEAM comes from the same place as the CLI's (teamline_cli.PARTY). Until 2026-09-08 this script
-# knew only --party and fell back to "alpha", so a session that exported TEAMLINE_PARTY and started
+# The TEAM comes from the same place as the CLI's (teamline_cli.PARTY). An earlier version knew
+# only --party and fell back to the first configured team, so a session that exported TEAMLINE_PARTY and started
 # its feed registered SILENTLY INTO THE DEFAULT TEAM -- no error on either side. --party still wins when given.
 DEFAULT_PARTY = os.environ.get("TEAMLINE_PARTY", "alpha").strip().lower()
 
@@ -39,7 +39,7 @@ BUSY_RETRY_S = 30
 
 def _refusal(e):
     """A handshake REFUSAL (HTTP 403 / close 4001) never resolves by retrying: the broker is saying
-    this feed may not exist -- unknown team, or no ext. Measured 2026-09-08: the old code retried it
+    this feed may not exist -- unknown team, or no ext. Measured: the earlier code retried it
     every 2 s forever and the session simply never registered."""
     status = getattr(getattr(e, "response", None), "status_code", None) or getattr(e, "status_code", None)
     if status == 403 or "HTTP 403" in str(e):

@@ -153,13 +153,13 @@ async def run(tmp):
        "3 HOLDERS" in out and "1 HOLDERS" not in out, out[:240])
 
     # ---- 15. a team the broker does not know must FAIL LOUDLY, never opaquely and never in a loop
-    # (operator 2026-09-08). Measured before the fix: sw_register answered only "Error executing tool
+    # Measured before the fix: sw_register answered only "Error executing tool
     # sw_register" with no mention of teams, and the feed script retried HTTP 403 every 2 s forever.
     r = await call("newteam", "sw_register", ext="probe", now="n", session_id="x")
     err = str(r.get("error", "")) if isinstance(r, dict) else ""
     ck("an unknown team gets a NAMED error from sw_register, not an opaque tool failure",
        isinstance(r, dict) and "newteam" in err and "not enabled" in err, r)
-    # SECURITY (operator, 2026-09-08): the refusal must NOT enumerate the real teams -- a caller that
+    # SECURITY: the refusal must NOT enumerate the real teams -- a caller that
     # guessed wrong would learn the valid names and could then present itself as one of them.
     ck("the refusal does NOT disclose which teams exist",
        not any(t in err for t in ("alpha", "beta", "gamma")), err[:200])
@@ -181,7 +181,7 @@ async def run(tmp):
        and "team" in out and "enabled" in out,
        ("LOOPED FOREVER" if looped else (rc, lines[:3])))
 
-    # SECURITY (2026-09-08, reported from a sibling session and reproduced here): the two clients
+    # SECURITY (reported from another session and reproduced here): the two clients
     # read the TEAM FROM DIFFERENT PLACES. teamline_cli honours TEAMLINE_PARTY; teamline_feed knew only
     # --party and fell back to "alpha". So a session told (the onboarding doc) to export
     # TEAMLINE_PARTY and then start its feed registered SILENTLY INTO THE DEFAULT TEAM -- a cross-team
@@ -326,6 +326,45 @@ async def run(tmp):
                     _asm.append("%s:%d" % (_rel, _nd.lineno))
     ck("no file in this tree assembles a string out of literal fragments",
        not _asm, sorted(set(_asm))[:8])
+
+    # ---- the shipped source must not read as one deployment's incident diary ----------------------
+    # Comments dated to a day, constants stamped with the wall-clock time somebody chose them, and
+    # words this repository never defines. None of it helps a reader: they cannot see the day, the
+    # clock or the tab being referred to, and it dates the code. Keep the engineering fact and drop
+    # the provenance -- "raised from 120 because 120 truncated real lines" says everything the date
+    # was standing in for. Check NAMES are the sharp case, because every run prints them.
+    _date0 = _re0.compile(r"\b20\d\d-\d\d-\d\d\b")
+    _clock0 = _re0.compile(r"(?<![\d.])\b(?:[01]?\d|2[0-3]):[0-5x][\dx]\b(?!\d)")
+    # Vocabulary is scanned in the PACKAGE only, not here: a check that forbids undefined words has
+    # to name them, and scanning itself would make it permanently red -- the trap D-L1's needle list
+    # fell into. Check names are scanned wherever they live, which is where the harm actually was.
+    _vocab0 = _re0.compile(r"teamline_state|HANDOFF|\bDM\b|reply Q\d|the app\b")
+    # THE WHOLE TREE, not a list of directories. Scoping it to `teamline/` and `tests/` was the first
+    # version, and that is D-L1's mistake again -- its scan used an extension allowlist and was
+    # quietly skipping the Dockerfile, the LICENSE and a shipped .js, all of which can carry a line
+    # like this. `docs/` is the single exclusion, and it is a real distinction: a fix log RECORDS
+    # when something was decided, which is the opposite of a comment that merely happens to be dated.
+    _diary = []
+    for _dp, _dn, _fs in os.walk(_root):
+        _dn[:] = [d for d in _dn if not d.startswith(".") and d not in ("__pycache__", "docs")
+                  and not any(_fn0.fnmatch(d, p) for p in _ignored)]
+        for _f in sorted(_fs):
+            _rel2 = os.path.relpath(os.path.join(_dp, _f), _root)
+            _rxs = (_date0, _clock0, _vocab0) if _rel2.startswith("teamline") else (_date0, _clock0)
+            for _i, _ln in enumerate(
+                    io.open(os.path.join(_dp, _f), encoding="utf-8", errors="replace"), 1):
+                for _rx in _rxs:
+                    _m = _rx.search(_ln)
+                    if _m:
+                        _diary.append("%s:%d:%s" % (_rel2, _i, _m.group(0)))
+    for _f in ("test_switchboard.py", "test_switchboard_e2e.py"):
+        _src2 = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)), _f),
+                        encoding="utf-8").read()
+        for _nm in _re0.findall(r"""ck\(\s*["'](.+?)["']\s*,""", _src2, _re0.S):
+            if _date0.search(_nm) or _clock0.search(_nm) or _vocab0.search(_nm):
+                _diary.append("%s name: %s" % (_f, _nm.strip()[:56]))
+    ck("no shipped source line or check name is dated, clocked, or names something undefined here",
+       not _diary, sorted(set(_diary))[:8])
 
     # ---- a publish candidate carries no identifier from the deployment it was forked from ---------
     # The rename that de-identified this repository replaced the TEAM names and left the LANE names
@@ -698,9 +737,9 @@ async def run(tmp):
        d["beta/ruler"]["hygiene"] == "GONE" and d["alpha/review"]["state"] == "IDLE"
        and any(e["event"] == "peer_lost" for e in ledger()), (d.get("beta/ruler"), d.get("alpha/review")))
 
-    # ---- state file + healthz (DM's liveness line) -------------------------------------------------
+    # ---- state file + healthz (an external liveness display) -------------------------------------------------
     sf = os.path.join(tmp, "broker_state.json")
-    ck("the broker writes broker_state.json for the DM tab (ts, up, port, extensions, calls)",
+    ck("the broker writes broker_state.json for an external display (ts, up, port, extensions, calls)",
        os.path.exists(sf) and set(json.load(open(sf))) >= {"ts", "ts_local", "up", "port", "extensions", "calls"}, sf)
     async with httpx2.AsyncClient() as hc:
         hz = await hc.get("http://127.0.0.1:%d/healthz" % PORT)
@@ -743,7 +782,7 @@ async def run(tmp):
        isinstance(obs[0].get("rows"), list)
        and any(isinstance(r, dict) and r.get("text") for r in obs[0]["rows"]),
        [r.get("event") for r in (obs[0].get("rows") or [])][-6:])
-    # ---- A SILENT ACKING HOLDER IS RE-PUSHED FOREVER (the gamma trap, 2026-09-14). Passing
+    # ---- A SILENT ACKING HOLDER IS RE-PUSHED FOREVER (the gamma trap). Passing
     # session_id makes a feed an ACKING one (`acking()` = bool(session_of(ext))), and the broker then
     # keeps the message in the outbox until an ack arrives. teamline_feed.py sends only {"ping":1} and
     # NEVER acks -- so a lane started with --session-id receives the same message again every
@@ -771,8 +810,8 @@ async def run(tmp):
     ck("an acking holder that never acks is re-pushed the SAME message repeatedly (the gamma trap)",
        len(silent) > 1 and len(set(silent)) == 1, dict(pushes=len(silent), distinct=len(set(silent))))
 
-    # ---- the standby-holder hazard, at the WS layer (beta's nuance, 2026-09-06: "the broker
-    # attach IS a register, so the drain path is live on our attach too"). Confirmed here against
+    # ---- the standby-holder hazard, at the WS layer: a broker attach IS a register, so the drain
+    # path is live on an attach too. Confirmed here against
     # our own broker: /ws for an ext that does not exist falls to sb.register(), which releases
     # held voicemail, and the attaching socket is then handed everything pending. So a standby
     # holder takes the mail the real session was meant to get. See TEAMLINE_PROTOCOL.md 7 and
@@ -783,7 +822,7 @@ async def run(tmp):
 
     async def hold(sink, until=None, seconds=3.0):
         """Read frames until `until(sink)` is satisfied, or `seconds` elapse. A FIXED window flaked
-        once on 2026-09-08 and sent the reader hunting a park-safe register() that nobody wrote --
+        once, and sent the reader hunting a park-safe register() that nobody wrote --
         a load-bearing hazard check must not cry wolf, so waiting for the CONDITION is the rule."""
         deadline = asyncio.get_running_loop().time() + seconds
         async with websockets.connect(
@@ -797,7 +836,7 @@ async def run(tmp):
                     ev = json.loads(await asyncio.wait_for(anext(it), left))
                     # Do NOT assume the registration frame arrives FIRST: a pending voicemail push can
                     # win that race, and consuming "the first frame" then SWALLOWS the very message this
-                    # check is looking for (seen 2026-09-08, sink held only the registered frame).
+                    # check is looking for (seen live: the sink held only the registered frame).
                     if ev.get("type") == "registered":
                         continue
                     sink.append(ev)
@@ -814,7 +853,7 @@ async def run(tmp):
        not any("left while the box was off" in (e.get("text") or "") for e in real),
        [e.get("text", "")[:50] for e in real])
 
-    # ---- ONE HOLDER PER EXTENSION (operator, 2026-09-08: "adopt refuse-second-holder").
+    # ---- ONE HOLDER PER EXTENSION: a second socket on a live lane is refused.
     # push() fans every event out to all holders, so N holders = N copies while the ledger records
     # ONE delivery -- measured live: a single lane held FIVE, and no msg_id in 2,743 rows had a second
     # `delivered` row. The rule is: a LIVE incumbent is NEVER evicted; a newcomer is refused whatever
@@ -1017,7 +1056,7 @@ async def run(tmp):
     await asyncio.sleep(0.2)
 
     ids = [e["id"] for e in feeds["writer"] + feeds["review"] if e.get("kind") and not e.get("part")]
-    ck("no frame reaches a non-acking feed twice (08:4x: a nudge arrived twice -- push vs retry sweep race)",
+    ck("no frame reaches a non-acking feed twice (seen live: a nudge arrived twice, push vs retry sweep race)",
        len(ids) == len(set(ids)), [i for i in ids if ids.count(i) > 1][:3])
     for t in ft + [fs, ot, wt["deep"]]:
         t.cancel()

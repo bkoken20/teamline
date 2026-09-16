@@ -8,8 +8,8 @@ Surfaces:
                   Tools: sw_* (switchboard_broker.py). Every message names ONE extension.
   /ws?party=<team>&ext=<name>&now=<text>[&sid=<harness session id>][&session_id=<the host id>]
                   a session's feed; holding it is presence; registers the extension. A feed
-                  WITHOUT ext is refused (the team-level line was retired 2026-09-02 18:3x,
-                  operator: every message must be addressed to one session).
+                  WITHOUT ext is refused: a team-level line was
+                  removed, because every message must be addressed to ONE session.
   /ws?party=operator   observer feed for the page (snapshot, then every ledger row).
   /directory      JSON.   /hook/now  POST {session_id, text} (the prompt hook's derived now-line).
   /               operator page (teamline_page.html, read per request).   /operator/say  POST.

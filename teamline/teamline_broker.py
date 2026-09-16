@@ -91,7 +91,15 @@ def build(root=ROOT, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=90, state_
 
     # ---------------------------------------------------------------- WS
     async def ws_feed(ws):
-        party = ws.query_params.get("party", "")
+        # NORMALISED ONCE, HERE, because this is where the wire's spelling enters. TEAMS is
+        # lower-cased at parse time and the MCP header is lower-cased before it is compared, so an
+        # un-normalised ?party= made the two doors disagree: `--party Alpha` missed, the socket was
+        # closed unaccepted, and starlette answers that with HTTP 403 -- which the shipped client
+        # treats as PERMANENT and exits on, reporting that the team is not enabled. A capital letter,
+        # diagnosed as a broker misconfiguration for the operator to fix.
+        #
+        # It also keeps one lane per name: `Alpha/deep` and `alpha/deep` cannot become two lanes.
+        party = ws.query_params.get("party", "").strip().lower()
         ext = ws.query_params.get("ext")
         if party == OPERATOR:
             await ws.accept()

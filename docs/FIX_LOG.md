@@ -2341,6 +2341,45 @@ whenever a handshake failed after registration. The check goes red.
 
 ---
 
+## R-27 — the two doors disagreed about capital letters, and one of them exits for good
+
+**Severity:** low in mechanism, sharper in consequence. The failure is a permanent stop with a
+diagnosis that sends the user to the operator.
+
+**What was wrong.** `TEAMS` is lower-cased when it is parsed, and the MCP path lower-cases the
+`X-Teamline-Party` header before comparing. The WebSocket compared `?party=` exactly as it arrived.
+So `--party Alpha` missed, the socket was closed without being accepted, and starlette answers that
+with **HTTP 403** — which the shipped client treats as permanent: it stops for good, reporting that
+the team is not enabled and to ask the operator to enable it. A capital letter, diagnosed as a broker
+misconfiguration somebody else has to fix.
+
+**The fix: normalised once, where the wire enters.** `.strip().lower()` at the top of `ws_feed`,
+before any of it is used. Doing it in the client instead would leave the obligation with every future
+client — the broker is the one place that sees them all.
+
+**The value has more consumers than the one that was broken, so each was walked.** It feeds the
+`operator` test, the `party in TEAMS` test, and then the lane's own **name**. That third one is why a
+fix here could have been worse than the defect: an un-normalised name would let `Alpha/deep` and
+`alpha/deep` exist as two lanes of the same extension, each with its own holder. Measured across
+`alpha`, `Alpha`, `ALPHA`, `beta`, `Beta`: one lane per team, none carrying a capital. `operator` and
+`Operator` both reach the observer snapshot. `nosuchteam` is still refused.
+
+**The `.strip()` is not decoration.** Literal spaces cannot survive a request line — the server
+answers 400 before the handler sees anything — but percent-encoded ones arrive intact:
+`?party=%20Alpha%20` now registers into `alpha`, and would have been refused without it.
+
+**The check.** A feed connects with `?party=Alpha` and must both register and land in the lower-case
+lane. It is written to CATCH the handshake failure rather than let it propagate: the refusal happens
+during `connect()`, so an unguarded check does not fail, it takes the suite down and reports nothing
+about anything behind it. `R-27` removes the normalisation; the check goes red naming the 403.
+
+**One thing the check had to clean up after itself.** It registers a lane, and a later check asserts
+the directory holds exactly four extensions. The probe unregisters itself, so the suite sees the
+directory it expects — a check that leaves state behind breaks its neighbours for reasons that have
+nothing to do with them.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

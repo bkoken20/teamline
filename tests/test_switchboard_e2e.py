@@ -225,6 +225,32 @@ async def run(tmp):
         async with Client(streamable_http_client(url, http_client=hc2)) as s2:
             res = await s2.call_tool("sw_directory", {})
             txt = "".join(c.text for c in res.content if getattr(c, "text", None))
+    # ---- the two doors must agree about case ------------------------------------------------------
+    # The MCP header is lower-cased before it is compared; the WebSocket's ?party= was not, and TEAMS
+    # is lower-cased at parse time, so `--party Alpha` missed and the socket was closed unaccepted.
+    # Starlette answers that with HTTP 403, which the shipped client treats as PERMANENT: it exits for
+    # good, reporting that the team is not enabled. A capital letter, diagnosed as a broker
+    # misconfiguration the operator has to fix.
+    # The refusal is at the HANDSHAKE, so connect() RAISES rather than returning something to read.
+    # Caught here on purpose: a check that raises is not a check that failed -- it takes the whole
+    # suite down and reports nothing about the other checks behind it.
+    _creg = None
+    try:
+        async with websockets.connect(
+                "ws://127.0.0.1:%d/ws?party=Alpha&ext=casetest&now=mixed-case" % PORT) as _cw:
+            _creg = json.loads(await asyncio.wait_for(anext(aiter(_cw)), 3))
+    except Exception as _ce:
+        _st = getattr(getattr(_ce, "response", None), "status_code", None)
+        _creg = {"refused": "%s status=%s" % (type(_ce).__name__, _st)}
+    ck("a feed whose ?party= is capitalised registers, like the MCP header which is lower-cased",
+       _creg.get("type") == "registered", _creg)
+    ck("...and it lands in the lower-case lane, not a second one spelled differently",
+       _creg.get("ext") == "alpha/casetest", _creg)
+    # Leave the directory as this check found it: a later check asserts the exact set of four
+    # extensions, and a probe lane left lying about would break it for a reason unrelated to itself.
+    await call("alpha", "sw_unregister", ext="casetest")
+    await asyncio.sleep(0.2)
+
     ck("the MCP endpoint serves a client whose Host header is not loopback (DNS-rebinding guard off)",
        "extensions" in txt, txt[:120])
 

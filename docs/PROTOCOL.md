@@ -9,7 +9,8 @@ An **extension** is one session's lane, named `team/name`.
 
 * `team` is one of the teams the broker was configured with (`TEAMLINE_TEAMS`). It arrives in the
   `X-Teamline-Party` header for MCP calls, or `?party=` on the WebSocket. It is administrative, not
-  authenticated — see the README's security section.
+  authenticated — see the README's security section. Both doors trim it and lower-case it, so
+  `Alpha` and `alpha` are the same team and cannot become two lanes of the same name.
 * `name` matches `[a-z0-9-]{1,32}` and is chosen by the session. Name the *work*, not the session:
   `docs-writer`, not `session-3`.
 

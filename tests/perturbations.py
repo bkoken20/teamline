@@ -204,6 +204,16 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-27", suite="e2e", file="teamline/teamline_broker.py",
+         find='        party = ws.query_params.get("party", "").strip().lower()',
+         repl='        party = ws.query_params.get("party", "")',
+         must_fail="a feed whose ?party= is capitalised registers, like the MCP header which is lower-cased",
+         why="compares the wire's spelling of the team against TEAMS, which is lower-cased at parse "
+             "time, while the MCP header path lower-cases before comparing. The two doors then "
+             "disagree: --party Alpha misses, the socket is closed unaccepted, starlette answers HTTP "
+             "403, and the shipped client treats 403 as permanent and exits saying the team is not "
+             "enabled -- a capital letter reported as a broker misconfiguration"),
+
     dict(id="R-23", suite="e2e", file="teamline/switchboard_broker.py",
          find="                took = True          # the lane is registered and marked feed-up from here",
          repl="                took = False         # PERTURBED: the undo covers nothing",

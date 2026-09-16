@@ -1128,6 +1128,51 @@ async def run(tmp):
        d["beta/ruler"]["hygiene"] == "GONE" and d["alpha/review"]["state"] == "IDLE"
        and any(e["event"] == "peer_lost" for e in ledger()), (d.get("beta/ruler"), d.get("alpha/review")))
 
+    # ---- a handshake that dies AFTER the lane is registered ---------------------------------------
+    # Registration marks the lane feed-up several statements before the try/finally that would mark
+    # it down. Measured against a real socket reset between the 101 and the first frame: starlette
+    # raises WebSocketDisconnect out of the `registered` send, which is outside that try -- and the
+    # lane is left LIVE holding a socket nobody can deliver to. It never expires, because nothing
+    # ever marked the feed down, so the name is locked out for good: a LIVE lane is never replaced.
+    #
+    # Driven through the broker's own feed() with a socket that accepts and then dies, because the
+    # race decides whether a real reset raises here or is swallowed by the kernel buffer -- two of
+    # five attempts reproduced it, which is a defect but would be a flaky check.
+    import switchboard_broker as _SWB
+    from starlette.websockets import WebSocketDisconnect as _WSD
+
+    class _StubMCP:
+        def tool(self, *a, **k):
+            return lambda fn: fn
+
+    class _DeadWS:
+        """Accepts, then dies on the first frame -- what a client killed at the 101 looks like."""
+        headers = {}
+
+        async def accept(self):
+            return None
+
+        async def send_text(self, _):
+            raise _WSD(code=1006)
+
+        async def receive_text(self):
+            raise _WSD(code=1006)
+
+        async def close(self, code=1000):
+            return None
+
+    _r23root = os.path.join(tmp, "r23")
+    os.makedirs(_r23root, exist_ok=True)
+    _sw23 = _SWB.wire(_StubMCP(), _r23root, {"loop": asyncio.get_event_loop()}, feed_gone_s=0.5)
+    try:
+        await _sw23["feed"](_DeadWS(), "alpha", "ghost", "opening line", "sid-ghost", None)
+    except Exception:
+        pass                                  # the endpoint is allowed to raise; the LANE is the subject
+    await asyncio.sleep(0.9)                  # past feed_gone_s for this instance
+    _ghost = {e["ext"]: e for e in _sw23["sb"].directory()}.get("alpha/ghost")
+    ck("a handshake that dies after registering leaves a lane that expires, not a permanent phantom",
+       bool(_ghost) and _ghost["hygiene"] != "LIVE", _ghost)
+
     # ---- state file + healthz (an external liveness display) -------------------------------------------------
     sf = os.path.join(tmp, "broker_state.json")
     ck("the broker writes broker_state.json for an external display (ts, up, port, extensions, calls)",

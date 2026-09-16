@@ -189,118 +189,132 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
         full = f"{team}/{name}"
         evict = ()
         replacing = False
-        async with accept_sem:
-            await asyncio.sleep(random.uniform(0, 0.05))
-            e = sb._ext.get(full)
-            held = list(feeds.get(full) or ())
-            if held:
-                # ONE HOLDER PER EXTENSION: a second socket on a live lane is refused.
-                # A LIVE incumbent is never evicted -- evicting one lets N clients form a ring, each
-                # replacing the last, which is what would have happened to that lane's five (they share one
-                # session_id, so any identity carve-out routes the real failure case into replace).
-                #
-                # The refusal is RETRYABLE, and that is load-bearing. last_seen can be up to
-                # feed_gone_s stale and still read LIVE, so a socket that went half-open is
-                # INDISTINGUISHABLE from a live one for that whole window -- roughly 45 client
-                # reconnect attempts at the 2 s cadence. Refusing fatally there would cost a lane its
-                # line until a human relaunched it, and a session with no line cannot be rung to be
-                # told. So a surplus retries harmlessly forever and a genuine reconnect gets in as
-                # soon as the incumbent is reaped. Culling surplus watchers is a human job; losing a
-                # lane is not recoverable from inside the system, and that asymmetry decides it.
-                alive = bool(e) and (time.time() - (e.get("last_seen") or 0)) <= feed_gone_s
-                if alive:
+        # ONE undo, and everything that can fail after the lane is marked feed-up lives inside
+        # it. Registration happens several statements before the socket is a holder: accept(),
+        # the evictions and the `registered` frame all run in between, and a client that dies at
+        # the 101 makes that send raise. Measured: starlette raises WebSocketDisconnect there,
+        # and the lane was left LIVE holding a socket nobody can deliver to -- for good, because
+        # nothing had marked the feed down, and a LIVE lane is never replaced. The name was gone.
+        #
+        # `took` is what the finally asks. A refused handshake returns from inside here having
+        # changed nothing, and must NOT mark a lane down -- that lane belongs to the incumbent.
+        took = False
+        try:
+            async with accept_sem:
+                await asyncio.sleep(random.uniform(0, 0.05))
+                e = sb._ext.get(full)
+                held = list(feeds.get(full) or ())
+                if held:
+                    # ONE HOLDER PER EXTENSION: a second socket on a live lane is refused.
+                    # A LIVE incumbent is never evicted -- evicting one lets N clients form a ring, each
+                    # replacing the last, which is what would have happened to that lane's five (they share one
+                    # session_id, so any identity carve-out routes the real failure case into replace).
+                    #
+                    # The refusal is RETRYABLE, and that is load-bearing. last_seen can be up to
+                    # feed_gone_s stale and still read LIVE, so a socket that went half-open is
+                    # INDISTINGUISHABLE from a live one for that whole window -- roughly 45 client
+                    # reconnect attempts at the 2 s cadence. Refusing fatally there would cost a lane its
+                    # line until a human relaunched it, and a session with no line cannot be rung to be
+                    # told. So a surplus retries harmlessly forever and a genuine reconnect gets in as
+                    # soon as the incumbent is reaped. Culling surplus watchers is a human job; losing a
+                    # lane is not recoverable from inside the system, and that asymmetry decides it.
+                    alive = bool(e) and (time.time() - (e.get("last_seen") or 0)) <= feed_gone_s
+                    if alive:
+                        await ws.accept()
+                        await ws.send_text(json.dumps(dict(error=(
+                            f"{full} already has a live feed holder, so this one is refused: every message "
+                            f"would be delivered once per socket while the ledger recorded a single "
+                            f"delivery. This is RETRYABLE -- if you are that lane reconnecting, the "
+                            f"incumbent is reaped after {feed_gone_s:.0f}s of silence and your next "
+                            f"attempt gets in. If you left a previous watcher running, KILL IT."),
+                            retry_s=HOLDER_RETRY_S, retryable=True)))
+                        await ws.close(code=HOLDER_BUSY)
+                        return
+                    evict = held
+                    replacing = True        # take the RE-ATTACH path below, never a fresh register():
+                    # register() refuses an ext whose hygiene is LIVE, so replacing a dead holder would
+                    # be rejected with "pick another name" -- the very lockout this escape exists to stop.
+                try:
+                    # WHO MAY TAKE OVER A LANE. Both halves of an extension's name are public in
+                    # /directory, so "knows the name" proves nothing. A re-attach is allowed only when
+                    # the caller PROVES the identity the lane was registered with -- or when the lane
+                    # carries no identity at all, in which case there is nothing to prove and an
+                    # anonymous lane simply cannot be protected (say so rather than pretending).
+                    #
+                    # Dropping the dead-socket clause outright was the alternative and it is worse: a
+                    # lane whose socket blipped could not reconnect until it was retired, and a session
+                    # with no line cannot be rung to be told about it.
+                    bound = (e.get("sid") or e.get("session_id")) if e else None
+                    mine = bool(e) and ((session_id and e.get("session_id") == session_id)
+                                        or (sid and e.get("sid") == sid))
+                    if e and (mine or (not bound and ((e["feed"] and not e["feed_up"]) or replacing))):
+                        e["feed"] = True
+                        sb.feed(team, name, True)
+                        # NOT the now line. `now` here is the client's LAUNCH-time text: teamline_feed.py
+                        # builds its URL once in main() and retries that same URL every 2 s, so a lane
+                        # that blipped -- or every lane at once, after a broker restart -- would have its
+                        # status reset to what the session said at startup. Re-stamping it is worse than
+                        # showing stale text: a model line younger than 30 minutes outranks a derived
+                        # one, so the launch text would also outrank whatever /hook/now last reported.
+                        # The line was set when the lane registered, by the session itself, and only the
+                        # session can say it has changed -- sw_now, or the hook. This branch is a socket
+                        # coming back, which is not news about what anyone is doing.
+                        if sid:
+                            e["sid"] = sid
+                    else:
+                        sb.register(team, name, now=now or "", feed=True, sid=sid or None, session_id=session_id or None)
+                except SB.SwitchError as ex:
                     await ws.accept()
-                    await ws.send_text(json.dumps(dict(error=(
-                        f"{full} already has a live feed holder, so this one is refused: every message "
-                        f"would be delivered once per socket while the ledger recorded a single "
-                        f"delivery. This is RETRYABLE -- if you are that lane reconnecting, the "
-                        f"incumbent is reaped after {feed_gone_s:.0f}s of silence and your next "
-                        f"attempt gets in. If you left a previous watcher running, KILL IT."),
-                        retry_s=HOLDER_RETRY_S, retryable=True)))
-                    await ws.close(code=HOLDER_BUSY)
+                    # IS THIS REFUSAL PERMANENT OR IS IT THE CLOCK? A restarted session comes back with a
+                    # new identity -- the ordinary case, since every session has a new one -- and inside
+                    # the silence window its own lane still reads LIVE, so register() refuses it. That
+                    # refusal is correct; sending it as 4001 was not. PROTOCOL documents 4001 as
+                    # permanent and the shipped client stops for good on it, printing that the team is
+                    # not enabled, which is not the cause. The condition clears in at most feed_gone_s.
+                    #
+                    # Asked of the state machine rather than of the message text: if the lane exists and
+                    # reads LIVE, the refusal expires by itself and the caller should wait, not stop.
+                    _lane = sb._ext.get(full)
+                    if _lane is not None and sb._hygiene(_lane) == "LIVE":
+                        await ws.send_text(json.dumps(dict(
+                            error=("%s -- this is RETRYABLE. It is held by a socket that has not yet been "
+                                   "presumed dead; if that is your own previous session, it is reaped "
+                                   "after %.0fs of silence and your next attempt gets in."
+                                   % (str(ex).split(";")[0], feed_gone_s)),
+                            retry_s=HOLDER_RETRY_S, retryable=True)))
+                        await ws.close(code=HOLDER_BUSY)
+                        return
+                    await ws.send_text(json.dumps(dict(error=str(ex))))
+                    await ws.close(code=4001)
                     return
-                evict = held
-                replacing = True        # take the RE-ATTACH path below, never a fresh register():
-                # register() refuses an ext whose hygiene is LIVE, so replacing a dead holder would
-                # be rejected with "pick another name" -- the very lockout this escape exists to stop.
-            try:
-                # WHO MAY TAKE OVER A LANE. Both halves of an extension's name are public in
-                # /directory, so "knows the name" proves nothing. A re-attach is allowed only when
-                # the caller PROVES the identity the lane was registered with -- or when the lane
-                # carries no identity at all, in which case there is nothing to prove and an
-                # anonymous lane simply cannot be protected (say so rather than pretending).
-                #
-                # Dropping the dead-socket clause outright was the alternative and it is worse: a
-                # lane whose socket blipped could not reconnect until it was retired, and a session
-                # with no line cannot be rung to be told about it.
-                bound = (e.get("sid") or e.get("session_id")) if e else None
-                mine = bool(e) and ((session_id and e.get("session_id") == session_id)
-                                    or (sid and e.get("sid") == sid))
-                if e and (mine or (not bound and ((e["feed"] and not e["feed_up"]) or replacing))):
-                    e["feed"] = True
-                    sb.feed(team, name, True)
-                    # NOT the now line. `now` here is the client's LAUNCH-time text: teamline_feed.py
-                    # builds its URL once in main() and retries that same URL every 2 s, so a lane
-                    # that blipped -- or every lane at once, after a broker restart -- would have its
-                    # status reset to what the session said at startup. Re-stamping it is worse than
-                    # showing stale text: a model line younger than 30 minutes outranks a derived
-                    # one, so the launch text would also outrank whatever /hook/now last reported.
-                    # The line was set when the lane registered, by the session itself, and only the
-                    # session can say it has changed -- sw_now, or the hook. This branch is a socket
-                    # coming back, which is not news about what anyone is doing.
-                    if sid:
-                        e["sid"] = sid
-                else:
-                    sb.register(team, name, now=now or "", feed=True, sid=sid or None, session_id=session_id or None)
-            except SB.SwitchError as ex:
+                took = True          # the lane is registered and marked feed-up from here
                 await ws.accept()
-                # IS THIS REFUSAL PERMANENT OR IS IT THE CLOCK? A restarted session comes back with a
-                # new identity -- the ordinary case, since every session has a new one -- and inside
-                # the silence window its own lane still reads LIVE, so register() refuses it. That
-                # refusal is correct; sending it as 4001 was not. PROTOCOL documents 4001 as
-                # permanent and the shipped client stops for good on it, printing that the team is
-                # not enabled, which is not the cause. The condition clears in at most feed_gone_s.
-                #
-                # Asked of the state machine rather than of the message text: if the lane exists and
-                # reads LIVE, the refusal expires by itself and the caller should wait, not stop.
-                _lane = sb._ext.get(full)
-                if _lane is not None and sb._hygiene(_lane) == "LIVE":
-                    await ws.send_text(json.dumps(dict(
-                        error=("%s -- this is RETRYABLE. It is held by a socket that has not yet been "
-                               "presumed dead; if that is your own previous session, it is reaped "
-                               "after %.0fs of silence and your next attempt gets in."
-                               % (str(ex).split(";")[0], feed_gone_s)),
-                        retry_s=HOLDER_RETRY_S, retryable=True)))
-                    await ws.close(code=HOLDER_BUSY)
-                    return
-                await ws.send_text(json.dumps(dict(error=str(ex))))
-                await ws.close(code=4001)
-                return
-            await ws.accept()
-        feeds.setdefault(full, set()).add(ws)
-        for old_ws in evict:                    # a reconnect replaces its own socket
-            feeds[full].discard(old_ws)         # drop first so holders is correct immediately
+            feeds.setdefault(full, set()).add(ws)
+            for old_ws in evict:                    # a reconnect replaces its own socket
+                feeds[full].discard(old_ws)         # drop first so holders is correct immediately
+                try:
+                    await old_ws.close(code=4000)
+                except Exception:
+                    pass
+            await ws.send_text(json.dumps(dict(type="registered", ext=full, directory=directory_h(),
+                                               timeouts=dict(ack_s=ack_timeout_s, gone_s=feed_gone_s)), ensure_ascii=False))
+            for ev in sb.pending_for(full):
+                await _send(ws, ev)
             try:
-                await old_ws.close(code=4000)
+                while True:
+                    raw = await ws.receive_text()
+                    on_frame(full, raw)
             except Exception:
                 pass
-        await ws.send_text(json.dumps(dict(type="registered", ext=full, directory=directory_h(),
-                                           timeouts=dict(ack_s=ack_timeout_s, gone_s=feed_gone_s)), ensure_ascii=False))
-        for ev in sb.pending_for(full):
-            await _send(ws, ev)
-        try:
-            while True:
-                raw = await ws.receive_text()
-                on_frame(full, raw)
-        except Exception:
-            pass
         finally:
-            feeds[full].discard(ws)
-            if not feeds[full]:
-                try:
-                    sb.feed(team, name, False)
-                except SB.SwitchError:
-                    pass
+            if took:
+                (feeds.get(full) or set()).discard(ws)
+                if not feeds.get(full):
+                    try:
+                        sb.feed(team, name, False)
+                    except SB.SwitchError:
+                        pass
+
 
     # ---------------------------------------------------------------- MCP tools
     @mcp.tool()

@@ -204,6 +204,16 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-23", suite="e2e", file="teamline/switchboard_broker.py",
+         find="                took = True          # the lane is registered and marked feed-up from here",
+         repl="                took = False         # PERTURBED: the undo covers nothing",
+         must_fail="a handshake that dies after registering leaves a lane that expires, not a permanent phantom",
+         why="stops the finally from ever marking a lane's feed down, which is the state the code was "
+             "in whenever the handshake failed after registration: accept(), the evictions and the "
+             "`registered` frame all run before the old try began, and a client that dies at the 101 "
+             "makes that send raise. The lane was then LIVE holding a socket nobody can deliver to, "
+             "and it never expired, so the name could not be reclaimed"),
+
     dict(id="R-22", suite="e2e", file="teamline/switchboard_broker.py",
          find="                    sb.feed(team, name, True)",
          repl="                    sb.feed(team, name, True); sb.set_now(team, name, now) if now else None",

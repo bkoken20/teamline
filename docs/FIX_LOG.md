@@ -2284,6 +2284,63 @@ said. `R-22` puts the write back; the check goes red.
 
 ---
 
+## R-23 — a handshake that died after registering left the lane LIVE, for good
+
+**Severity:** higher than the review guessed, and it guessed honestly: it said *"uncertain whether
+Starlette raises there"*. It does, and the lane is left holding a socket nobody can deliver to
+— permanently, because nothing ever marked the feed down and **a LIVE lane is never replaced**. The
+extension name could not be reclaimed by anything short of a broker restart.
+
+**What was wrong.** Registration marks the lane feed-up, and then several statements run before the
+`try/finally` that reverses it: `ws.accept()`, adding the socket to `feeds`, closing any evicted
+predecessor, sending the `registered` frame, and pushing whatever was pending. A failure in any of
+them skipped the undo entirely.
+
+**Reachable, and the traceback names the statement.** A client reset between the 101 and the first
+frame makes starlette raise `WebSocketDisconnect` out of
+
+```
+  switchboard_broker.py:287   await ws.send_text(json.dumps(dict(type="registered", ...
+```
+
+Two of five attempts reproduced it against a real socket; the other three had their send absorbed by
+the kernel buffer and recovered normally through the receive loop. So it is a race — which is
+exactly why the check drives the broker's own `feed()` with a socket that accepts and then dies,
+rather than racing a real one and being flaky.
+
+**The trigger the review named is not the reachable one.** It described a client *"dropping
+mid-handshake"*. Measured with an ASGI probe around the app: a connection reset **during** the
+handshake is never dispatched at all — uvicorn drops it before the application is called, so the
+endpoint's ordering cannot matter. The reachable case is the one immediately after: the 101 has gone
+out, the endpoint is running, and the client is gone before the first frame.
+
+**How the measurement was wrong first, which is worth more than the finding.** The first three runs
+of the reproduction reported that *nothing* was ever registered, at every timing, and the control
+connection passed throughout — convincing evidence that the defect was unreachable. It was an
+artefact: the broker runs in the test's own event loop, and the harness used a blocking
+`time.sleep()` and a blocking `socket.recv()` between sending the upgrade and resetting the
+connection. The server never ran. The control passed because it happened to `await` instead. A
+harness that starves the loop it is measuring reports the system doing nothing and calls it safety.
+
+**The fix: one undo, and everything that can fail after the lane is marked feed-up lives inside it.**
+A `took` flag records the moment the lane becomes ours, and the `finally` acts only on that. The flag
+is what makes a **refusal** safe: a second holder turned away returns having changed nothing, and
+must not mark down a lane that belongs to the incumbent. Wrapping the block without it would have
+made every refused handshake drop the incumbent's feed.
+
+**The walk ran four paths, because moving a `try/finally` outward is the change that fixes one and
+breaks another.** An ordinary hold-and-drop still goes GONE after the grace period. A refused second
+holder gets 4003 and the incumbent stays LIVE, before and after. The failure case now expires instead
+of persisting. And an eviction — two coroutines on one lane — leaves the winner LIVE when the loser's
+`finally` runs. That last one needed the grace period to elapse before the reconnect: marking a feed
+down only stamps `gone_since`, so a reconnect an instant later is refused rather than admitted, and
+the first two attempts at that path silently measured the refusal instead.
+
+**The check.** `R-23` sets the flag to False, so the undo covers nothing — the state the code was in
+whenever a handshake failed after registration. The check goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

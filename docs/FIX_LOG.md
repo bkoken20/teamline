@@ -2380,6 +2380,65 @@ nothing to do with them.
 
 ---
 
+## R-28 — two facts lived only in memory, in a system whose contract is its ledger
+
+**Severity:** low in reach and worth the entry for what it contradicted. PROTOCOL: *"The ledger is
+the source of truth; the in-memory directory is derived from it."* Two writes made that false.
+
+**What was wrong.** The re-attach path wrote straight into the state dict:
+
+```
+  e["feed"] = True        the lane has a feed at all
+  e["sid"] = sid          the identity the re-attach guard checks
+```
+
+Neither reached a row, so a replay could not know either.
+
+**What that costs, measured by replaying a ledger built through the real handshake.** A lane the
+**tool** registered and a feed later attached to came back **UNREACHABLE** — its register row says
+`feed: false` and nothing since said otherwise — which sends calls to voicemail instead of ringing it,
+until its holder reconnects. And the `sid` came back `None`, so the guard that decides whether a
+returning client is the lane's own session had lost what it compares.
+
+**What is NOT lost, which was the first thing I assumed and it was wrong.** The lane does not become
+anonymous and takeable. `bound` reads `sid` **or** `session_id`, and the register row carries the
+session_id, so the clause that lets any client claim an unidentified lane is not reached. The
+reproduction says so in those words, because a fix log that overstates a harm is the same defect as
+one that understates it.
+
+**The fix: the row that already exists at that instant carries both.** `feed(team, name, up, sid=None)`
+commits the holder on the `feed` row, and `_apply` marks the lane as having a feed when one comes up.
+The broker's two silent mutations become the single ledgered call it was already making.
+
+**The alternative, and the number.** A separate `bind` event was the other design. It adds a row
+kind, a public method — which the check from `R-21` then requires to be reached or named — and a
+**second row per re-attach**, on a board whose unbounded row rate is an open finding in this log. The
+two facts become true in the same instant, so one row says so.
+
+**A branch added to `_apply` changes how every past row replays, so the walk went after the cases it
+was not written for.** A feed going **down** must not un-have the feed: `feed` stays true, `feed_up`
+goes false. A row carrying **no** sid must not erase one an earlier row established, while a row
+carrying a different one must replace it. And an **old ledger** — rows written before any of this —
+must replay exactly as it always did: it does, because the only new writes happen on fields those
+rows do not carry.
+
+**The check.** It is a replay, which is the only thing that can tell a written fact from a remembered
+one: build state through the broker's own handshake, rebuild it from the ledger alone, compare.
+`R-28` stops the sid reaching the row; the check goes red.
+
+**The check could not fail, and its own perturbation said so.** The first version compared the
+replayed sid against the LIVE one. But the fix routes the live binding through that same row, so
+removing the sid from the row makes both forget it, and the two agree at `None`: the runner reported
+`SILENT`. It compares against the value the client actually PRESENTED now, which no perturbation of
+the code under test can move.
+
+**One thing this broke, and the check that caught it.** The line the fix changed was the target text
+of `R-22`'s perturbation claim, which went stale the moment it moved. The cross-check added after
+`C-L1b` cost two gate runs — *every claim's target text is still in the file it names* — failed in the
+same suite run, and the claim was re-pointed. That is the check paying for itself.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

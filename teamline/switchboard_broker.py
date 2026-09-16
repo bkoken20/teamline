@@ -248,8 +248,12 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
                     mine = bool(e) and ((session_id and e.get("session_id") == session_id)
                                         or (sid and e.get("sid") == sid))
                     if e and (mine or (not bound and ((e["feed"] and not e["feed_up"]) or replacing))):
-                        e["feed"] = True
-                        sb.feed(team, name, True)
+                        # LEDGERED, not remembered. These two facts -- the lane has a feed, and
+                        # this socket is holding it -- used to be written straight into the state
+                        # dict, which the contract calls a DERIVED view. A restart rebuilt neither:
+                        # a tool-registered lane came back UNREACHABLE, sending calls to voicemail
+                        # instead of ringing, and the identity the guard below checks came back None.
+                        sb.feed(team, name, True, sid=sid or None)
                         # NOT the now line. `now` here is the client's LAUNCH-time text: teamline_feed.py
                         # builds its URL once in main() and retries that same URL every 2 s, so a lane
                         # that blipped -- or every lane at once, after a broker restart -- would have its
@@ -259,8 +263,6 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
                         # The line was set when the lane registered, by the session itself, and only the
                         # session can say it has changed -- sw_now, or the hook. This branch is a socket
                         # coming back, which is not news about what anyone is doing.
-                        if sid:
-                            e["sid"] = sid
                     else:
                         sb.register(team, name, now=now or "", feed=True, sid=sid or None, session_id=session_id or None)
                 except SB.SwitchError as ex:

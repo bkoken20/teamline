@@ -204,6 +204,15 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-28", suite="e2e", file="teamline/switchboard.py",
+         find='        self._commit("feed", ext=e["ext"], up=bool(up), sid=sid or None)',
+         repl='        self._commit("feed", ext=e["ext"], up=bool(up))',
+         must_fail="a restart rebuilds the sid a re-attach bound, from the ledger alone",
+         why="stops the holder's identity reaching the ledger, so it lives only in the in-memory "
+             "directory the contract calls DERIVED. A restart then forgets which socket holds a lane, "
+             "and the re-attach guard -- which reads exactly that -- treats the lane's own session as "
+             "a stranger until it re-attaches"),
+
     dict(id="R-27", suite="e2e", file="teamline/teamline_broker.py",
          find='        party = ws.query_params.get("party", "").strip().lower()',
          repl='        party = ws.query_params.get("party", "")',
@@ -225,8 +234,8 @@ PERTURBATIONS = [
              "and it never expired, so the name could not be reclaimed"),
 
     dict(id="R-22", suite="e2e", file="teamline/switchboard_broker.py",
-         find="                    sb.feed(team, name, True)",
-         repl="                    sb.feed(team, name, True); sb.set_now(team, name, now) if now else None",
+         find="                        sb.feed(team, name, True, sid=sid or None)",
+         repl="                        sb.feed(team, name, True, sid=sid or None); sb.set_now(team, name, now) if now else None",
          must_fail="a reconnect does not overwrite the lane's now line with the text it launched with",
          why="writes the lane's status line from the reconnect URL, which carries the text the client "
              "launched with -- the feed builds that URL once and retries it every 2 s. After a broker "

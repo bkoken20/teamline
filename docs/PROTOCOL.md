@@ -190,8 +190,16 @@ Each row carries both clocks (`ts_both`) — UTC and the broker's local time wit
 container with no `TZ` set will stamp both halves UTC, which is survivable but makes reading a
 history across a timezone change harder than it needs to be. Set `TZ`.
 
-Feed presence is the one thing *not* replayed: a socket that is gone is gone, so extensions come back
-from a restart as feedless until their holders reconnect.
+Two different things are called "feed", and only one of them is replayed. That a lane **has** a feed
+is a fact about the lane, and it is rebuilt: a `feed` row with `up: true` establishes it, so an
+extension that registered without one and was attached to later does not come back UNREACHABLE. That
+a socket is **currently held** is not: a socket that is gone is gone, so every lane comes back with
+its feed down, and its holders reconnect.
+
+A `feed` row going up also carries `sid`, the socket identity holding the lane, when the client gave
+one. It rides that row because both facts become true in the same instant, and because the re-attach
+guard reads that identity: a broker restart that forgot it would let the lane's own session be
+treated as a stranger.
 
 ### An unreadable row
 

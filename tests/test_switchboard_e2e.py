@@ -1199,6 +1199,47 @@ async def run(tmp):
     ck("a handshake that dies after registering leaves a lane that expires, not a permanent phantom",
        bool(_ghost) and _ghost["hygiene"] != "LIVE", _ghost)
 
+    # ---- a restart must rebuild what a re-attach bound ---------------------------------------------
+    # PROTOCOL: "The ledger is the source of truth; the in-memory directory is derived from it."
+    # The re-attach path wrote two facts straight into the state dict instead -- that the lane now
+    # has a feed, and the sid holding it -- so a replay could not know either. Measured before the
+    # fix: a lane the TOOL registered and a feed attached to came back UNREACHABLE, which sends
+    # calls to voicemail instead of ringing, and its sid came back None.
+    #
+    # The check is a REPLAY, because that is the only thing that can tell a written fact from a
+    # remembered one: build state through the broker's own handshake, rebuild it from the ledger
+    # alone, compare.
+    class _HoldWS(_DeadWS):
+        async def send_text(self, _):
+            return None
+
+        async def receive_text(self):
+            await asyncio.Event().wait()
+
+    _r28root = os.path.join(tmp, "r28")
+    os.makedirs(_r28root, exist_ok=True)
+    _sw28 = _SWB.wire(_StubMCP(), _r28root, {"loop": asyncio.get_event_loop()}, feed_gone_s=30)
+    _sb28 = _sw28["sb"]
+    _sb28.register("alpha", "rebound", now="registered by the tool", session_id="sess-R", feed=False)
+    _t28 = asyncio.create_task(_sw28["feed"](_HoldWS(), "alpha", "rebound", "held", "sid-BOUND", "sess-R"))
+    await asyncio.sleep(0.4)
+    _live28 = dict(_sb28._ext["alpha/rebound"])
+    import switchboard as _SB28
+    _rep28 = _SB28.Switchboard(ledger_path=_sb28.ledger_path,
+                               calls_dir=os.path.join(_r28root, "calls"),
+                               require_feed=True, feed_gone_s=30)._ext.get("alpha/rebound", {})
+    # Compared against what the CLIENT PRESENTED, not against the live state. Live and replayed
+    # agreeing proves nothing here: the fix routes the live binding through the same row, so a
+    # perturbation that stops the row carrying the sid makes BOTH forget it, and the two agree at
+    # None. Measured -- that version of this check reported SILENT under its own perturbation.
+    ck("a restart rebuilds the sid a re-attach bound, from the ledger alone",
+       _rep28.get("sid") == "sid-BOUND",
+       dict(presented="sid-BOUND", live=_live28.get("sid"), replayed=_rep28.get("sid")))
+    ck("...and that the lane has a feed at all, so it is not UNREACHABLE after a restart",
+       _rep28.get("feed") is True,
+       dict(live=_live28.get("feed"), replayed=_rep28.get("feed")))
+    _t28.cancel()
+
     # ---- state file + healthz (an external liveness display) -------------------------------------------------
     sf = os.path.join(tmp, "broker_state.json")
     ck("the broker writes broker_state.json for an external display (ts, up, port, extensions, calls)",

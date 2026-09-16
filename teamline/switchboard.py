@@ -241,6 +241,16 @@ class Switchboard:
             if e:
                 e["feed_up"] = bool(r["up"])
                 if r["up"]:
+                    # A feed that came up IS a feed: a lane registered without one (by sw_register)
+                    # and attached to later is reachable from here on, and must not replay as
+                    # UNREACHABLE. Never set False on the way down -- the lane still HAS a feed, it
+                    # is simply not answering, which is what feed_up above says.
+                    e["feed"] = True
+                if r.get("sid"):
+                    # Only ever bind, never clear: a row that carries no sid says nothing about
+                    # identity, and must not erase what an earlier one established.
+                    e["sid"] = r["sid"]
+                if r["up"]:
                     # A frame only disproves SILENCE. It cannot withdraw the host's report that the
                     # session behind this watcher is gone: a watcher is a separate process, and its
                     # socket being alive says nothing about the session it delivers to.
@@ -618,9 +628,16 @@ class Switchboard:
         if bool(running) != e["running"]:
             self._commit("running", ext=ext, running=bool(running))
 
-    def feed(self, team, name, up):
+    def feed(self, team, name, up, sid=None):
+        """sid: the socket identity now holding this lane, when the caller knows it.
+
+        It rides the feed row rather than a row of its own, because the two facts become true at the
+        same instant -- a socket attached, and this is who it is. The broker used to write both
+        straight into the state dict, so a replay could not know either: the lane came back
+        UNREACHABLE and its identity came back None. A row is what makes the directory derivable,
+        which is what the contract says it is."""
         e = self._mine(team, name)
-        self._commit("feed", ext=e["ext"], up=bool(up))
+        self._commit("feed", ext=e["ext"], up=bool(up), sid=sid or None)
         if up:
             self._release_vm(e["ext"])
         else:

@@ -2010,12 +2010,15 @@ passes for reasons other than the one it names.
 
 ```
   try:
-      async with websockets.connect(".../ws?party=alpha") as w1:
+      async with websockets.connect(<a feed URL naming a team and no extension>) as w1:
           await asyncio.wait_for(w1.recv(), 2)
       ck("a feed without an extension name is refused", False, "accepted")
   except Exception:
       ck("a feed without an extension name is refused", True)
 ```
+
+(The URL is described rather than written: `R-10` forbids a copyable feed URL that names a team
+without an extension, and this file is one of the ones it reads. That check caught this entry.)
 
 `except Exception` covers the outcome that matters. A broker that **accepted** the socket and then
 said nothing would time out after two seconds, the timeout would raise, and the check would report

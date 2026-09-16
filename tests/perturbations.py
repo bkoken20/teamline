@@ -210,6 +210,29 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-10-file", suite="e2e", file="tests/test_switchboard.py",
+         find="revisit the decision in docs/PROTOCOL.md 2",
+         # `{MISSING}` is filled by the runner with a document name that does not exist. Spelled out
+         # here it would be a dangling reference in its own right, and this file is scanned.
+         repl="revisit the decision in {MISSING}",
+         must_fail="every document this tree names is in this tree, with the passage it quotes",
+         why="points a reader at a document that is not in this repository -- the shape the private "
+             "review queue's pointers had, shipped"),
+
+    dict(id="R-10-passage", suite="e2e", file="docs/PROTOCOL.md",
+         find="### Why there is no standby holder",
+         repl="### A note on standby holders",
+         must_fail="every document this tree names is in this tree, with the passage it quotes",
+         why="leaves the file in place and renames the section two comments QUOTE. The harder half: "
+             "the document exists, the reference resolves, and the passage is not there"),
+
+    dict(id="R-10-url", suite="e2e", file="teamline/teamline_cli.py",
+         find="/ws?party=<team>&ext=<name>",
+         repl="/ws?party=<team>",
+         must_fail="no feed URL a reader might copy names a team without an extension",
+         why="restores an instruction that FAILS WHEN FOLLOWED -- the broker closes a feed URL that "
+             "names no extension, and the suite asserts it does"),
+
     dict(id="R-6-code", suite="e2e", file="teamline/teamline_broker.py",
          find='Route("/directory", sw["directory_json"]), Route("/healthz", sw["healthz"]),',
          repl='Route("/directory", sw["directory_json"]), Route("/healthz", sw["healthz"]),\n'

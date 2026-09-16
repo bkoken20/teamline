@@ -113,7 +113,12 @@ def main():
                        .replace("{CLOCK}", time.strftime("%H:%M"))
                        # `{ADDR}` is a private-range address, formatted rather than written, for the
                        # same reason: spelled here it would sit in the tree the address check walks.
-                       .replace("{ADDR}", "%d.%d.%d.%d" % (10, 0, 0, 2)))
+                       .replace("{ADDR}", "%d.%d.%d.%d" % (10, 0, 0, 2))
+                       # `{MISSING}` is the name of a document that is not in the repository. Written
+                       # here it would BE a dangling reference, in a file the check reads.
+                       # Note the extension is a separate slot: written as one literal, this line
+                       # would itself read as a reference to a document that does not exist.
+                       .replace("{MISSING}", "NOT_A_REAL_DOCUMENT_%s.%s" % (needle[3:9], "md")))
             write(path, src.replace(p["find"], payload).encode("utf-8"))
             out = run_suite(p["suite"], needle)
             fails = failed_checks(out)

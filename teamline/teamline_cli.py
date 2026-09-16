@@ -2,7 +2,8 @@
     python teamline_cli.py <tool> [json-args]      party = env TEAMLINE_PARTY (default alpha)
 Beta: copy this file into your own tree and set TEAMLINE_PARTY=beta (or edit the default).
 Inbound reaches a session through whatever its harness uses to deliver, once it holds a feed;
-a Claude session holds Monitor(ws://127.0.0.1:3790/ws?party=<party>). docs/ONBOARDING.md
+a session holds one by running teamline_feed.py (a feed names its extension:
+/ws?party=<team>&ext=<name>; a URL with no ext is closed on sight). docs/ONBOARDING.md
 """
 import asyncio, json, logging, os, sys, httpx2
 from mcp.client import Client

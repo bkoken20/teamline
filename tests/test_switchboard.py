@@ -368,7 +368,7 @@ def main():
     ck("a 250-char line is cut at 200", len(dirmap(sn)["beta/n"]["now"]) == 200)
 
     # ---- 13. voicemail across a RETIRED lane -- the two facts the no-standby-holder decision
-    #          rests on (docs/PROTOCOL.md, "why there is no standby holder").
+    #          rests on (docs/PROTOCOL.md 2, "why there is no standby holder").
     #          13a is why hand registration is SAFE: an off box costs a delay, not a message.
     #          13b is why a standby holder on the broker's own host would be UNSAFE as the broker stands.
     SBv, sv2, cv = fresh(tempfile.mkdtemp(prefix="sb_"))
@@ -398,7 +398,7 @@ def main():
     # 13b. THE HAZARD: register() releases held voicemail to WHOEVER registers the lane. A standby
     # holder covering a retired lane therefore DRAINS that lane's mailbox into its own feed and the
     # real session gets nothing. If this check ever goes red, someone made register() park-safe --
-    # revisit the decision in TEAMLINE_PROTOCOL.md rather than deleting the check.
+    # revisit the decision in docs/PROTOCOL.md 2 rather than deleting the check.
     SBh, sh, ch = fresh(tempfile.mkdtemp(prefix="sb_"))
     got = []
     sh.on_event(lambda e: got.append(e))

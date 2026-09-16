@@ -62,6 +62,29 @@ and re-pushes it every ack-timeout plus backoff until it does. This exists so a 
 refuse a message it could not hand over. **A client that declares `session_id` and never acks will be
 re-pushed the same message forever.** Choose deliberately.
 
+### Why there is no standby holder
+
+The obvious convenience is a daemon that holds a lane's socket while its session is away, so the lane
+never goes GONE. Do not build it. **A standby holder does not keep a lane's messages — it takes
+them.**
+
+Attaching to an extension that is absent or retired goes through registration, and registration
+releases that extension's held voicemail to whoever is now holding the socket. The mail is delivered,
+marked delivered in the ledger, and gone. When the real session returns, its mailbox is empty and the
+ledger says everything arrived. Nothing is flagged, because from the broker's side nothing went
+wrong: a holder asked for a lane and was given it.
+
+The two facts this rests on are asserted by the suite from both directions — through the state
+machine, and again over a real socket, because they are reached by different doors.
+
+What it replaces is safer than it looks: an absent session costs a **delay**, not a message.
+Voicemail is held for a lane with no holder and released when one arrives, so doing nothing loses
+nothing, and the convenience that looks like insurance is the thing that loses mail.
+
+If a future change makes registration park-safe — releasing held voicemail only to a caller that
+proves the lane's identity — this decision can be revisited. The checks that guard it say so, rather
+than forbidding the idea.
+
 ## 3. States
 
 | state | meaning |

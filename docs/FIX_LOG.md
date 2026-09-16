@@ -1244,6 +1244,59 @@ was correct, which is exactly how `D-L2`'s predecessor stopped firing.
 
 ---
 
+## R-10 — the shipped text pointed at three documents that are not here, and gave one instruction that fails
+
+**Severity:** medium. Four of the five sites cost a reader ten minutes of looking for a file that was
+never here. The fifth is worse: it is an instruction, in the first lines of a file a shell user
+opens, and following it does not work.
+
+**What was wrong.** Three references named two documents of the deployment this was forked from --
+a protocol file and a session quickstart -- neither of which was ever part of this repository. They
+are described rather than spelled here, because writing the name of a document that does not exist
+is the defect: the check reads this file too, and it is right to. A fourth reference named
+`docs/PROTOCOL.md` and quoted a section, *"why there is no standby holder"*, which that file did not
+contain. And the CLI's docstring told the reader a session holds its line with a feed URL carrying a
+team and **no extension** -- which the broker closes on sight, and which this suite already asserts
+is refused.
+
+The account of the lost review queue in this log says those pointers "did not travel". These are the
+same pointers, shipped.
+
+**The test that should have caught it.** None — and the class is worth naming. A reference is prose
+that makes a **checkable** claim: every one of these could have been settled by opening a file.
+
+**The fix.** The three dangling names are repointed at `docs/PROTOCOL.md`. The CLI docstring names
+`teamline_feed.py` and the URL form that works, and says plainly that one with no extension is closed.
+
+The quoted section is fixed the other way round: **the passage was written, not the pointer deleted.**
+The suite argues the standby-holder hazard at length from two directions, and `PROTOCOL.md` — the
+contract document — never mentioned it. §2 now carries it: a standby holder does not keep a lane's
+messages, it takes them, because attaching to an absent lane goes through registration, and
+registration releases held voicemail to whoever now holds the socket. The real session comes back to
+an empty mailbox and a ledger saying everything arrived.
+
+**That paragraph was walked before it was believed.** Fixing a dangling pointer by writing the passage
+it pointed at means adding prose that asserts behaviour — the exact class of defect being fixed here.
+So each sentence was put to the state machine with real values: a lane retired after silence;
+voicemail to it accepted, held, delivered to nobody; a standby holder attaching and being handed that
+message, the hold then empty and a `voicemail_released` row in the ledger; and the real session
+returning to **zero** messages. The paragraph says what the code does.
+
+**Attacking the check moved its boundary.** The URL rule first scanned only the package — which would
+have left the README free to instruct the broken form. It now scans everything a reader might copy,
+with `tests/` the single exclusion, because that is where the refused form is legitimately written out
+in order to prove it is refused.
+
+**What it does not cover.** Only `.md` references are resolved: a dangling pointer to a `.py` file
+would pass. A quoted passage is matched as a substring, so a reference that paraphrases a heading
+rather than quoting it is not checked.
+
+**The checks.** `R-10-file` points a reference at a document that is not here. `R-10-passage` is the
+harder half — it leaves the document in place and renames the section that two comments quote, so the
+file resolves and the passage does not. `R-10-url` restores the instruction that fails when followed.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1253,7 +1306,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 154 of the 184 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 154 of the 186 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

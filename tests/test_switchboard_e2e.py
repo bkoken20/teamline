@@ -330,6 +330,62 @@ async def run(tmp):
     ck("no file in this tree assembles a string out of literal fragments",
        not _asm, sorted(set(_asm))[:8])
 
+    # ---- shipped text must point at things that are here, and instructions that work ---------------
+    # Four references named documents that are not in this repository at all, and one quoted a section
+    # of a file that IS here and does not contain it. The fix log says the private review queue "did
+    # not travel"; these are that same pointer, shipped. The quoted passage matters as much as the
+    # file: naming a document that exists and a section that does not is the harder one to notice.
+    _md0 = _re0.compile(r"\b([A-Za-z0-9_./-]+\.md)\b")
+    # `[^,\n]{0,8}` is the section number between the filename and the comma. Without it this rule
+    # matched NEITHER of the two references that quote a passage -- it could not fail, and the
+    # perturbation runner is what said so, by reporting the claim SILENT instead of FIRES.
+    _phr0 = _re0.compile(r"\b[A-Za-z0-9_./-]+\.md[^,\n]{0,8},\s*[\"“]([^\"”\n]{6,60})[\"”]")
+    _have, _scan = set(), []
+    for _dp, _dn, _fs in os.walk(_root):
+        _dn[:] = [d for d in _dn if not d.startswith(".") and d != "__pycache__"
+                  and not any(_fn0.fnmatch(d, p) for p in _ignored)]
+        for _f in sorted(_fs):
+            _rel4 = os.path.relpath(os.path.join(_dp, _f), _root).replace(os.sep, "/")
+            _have.add(_rel4)
+            if _f.endswith((".py", ".md", ".js", ".html", ".yml", ".txt")):
+                _scan.append((os.path.join(_dp, _f), _rel4))
+    _have |= {_p.rsplit("/", 1)[-1] for _p in _have}
+    _dead = []
+    for _path4, _rel4 in _scan:
+        for _i, _ln in enumerate(io.open(_path4, encoding="utf-8",
+                                         errors="replace").read().splitlines(), 1):
+            for _name in _md0.findall(_ln):
+                _k = _name.replace("./", "")
+                if _k not in _have and _k.rsplit("/", 1)[-1] not in _have:
+                    _dead.append("%s:%d %s" % (_rel4, _i, _name))
+            for _ph in _phr0.findall(_ln):
+                _tg = [t for t in _md0.findall(_ln)
+                       if os.path.isfile(os.path.join(_root, t.replace("/", os.sep)))]
+                if _tg and not any(
+                        _ph.lower() in io.open(os.path.join(_root, t.replace("/", os.sep)),
+                                               encoding="utf-8", errors="replace").read().lower()
+                        for t in _tg):
+                    _dead.append("%s:%d %s has no %r" % (_rel4, _i, _tg[0], _ph))
+    ck("every document this tree names is in this tree, with the passage it quotes",
+       not _dead, sorted(set(_dead))[:6])
+
+    # A dangling pointer confuses; this one FAILS WHEN FOLLOWED. A feed URL naming a team and no
+    # extension is closed on sight by the broker, and the suite asserts that it is. `?party=operator`
+    # is right to carry no ext -- the observer is not a lane. EVERYTHING a reader might copy is
+    # scanned: the package, the README, the docs. `tests/` is the one exclusion, because that is where
+    # the refused form is legitimately written out in order to prove it is refused. Scoping this to
+    # the package alone was the first version, and it would have let the README instruct it freely.
+    _badu = []
+    for _path5, _rel5 in _scan:
+        if _rel5.startswith("tests/"):
+            continue
+        for _i, _ln in enumerate(io.open(_path5, encoding="utf-8",
+                                         errors="replace").read().splitlines(), 1):
+            for _u in _re0.findall(r"/ws\?[^\s\"'`)]*", _ln):
+                if "party=" in _u and "operator" not in _u and "ext=" not in _u:
+                    _badu.append("%s:%d %s" % (_rel5, _i, _u[:48]))
+    ck("no feed URL a reader might copy names a team without an extension", not _badu, _badu[:4])
+
     # ---- the security section must name every surface that needs no team name ----------------------
     # The README's one testable security claim is that a team name is the price of entry. It is not:
     # several surfaces never consult `team_of` at all, and one of them WRITES. A3 enumerated three and
@@ -841,7 +897,7 @@ async def run(tmp):
     # NEVER acks -- so a lane started with --session-id receives the same message again every
     # ack_timeout + backoff, for as long as it is up. On a harness that wakes the agent per frame that
     # is an unbounded wake loop. The cure is to pass `sid` instead (a NON-acking feed: a frame sent IS
-    # delivered), which is why TEAMLINE_SESSION_QUICKSTART.md's gamma line was corrected.
+    # delivered), which is why docs/ONBOARDING.md tells a session to hold its feed with --sid.
     silent = []
 
     async def silent_holder(seconds):
@@ -867,7 +923,8 @@ async def run(tmp):
     # path is live on an attach too. Confirmed here against
     # our own broker: /ws for an ext that does not exist falls to sb.register(), which releases
     # held voicemail, and the attaching socket is then handed everything pending. So a standby
-    # holder takes the mail the real session was meant to get. See TEAMLINE_PROTOCOL.md 7 and
+    # holder takes the mail the real session was meant to get.
+    # See docs/PROTOCOL.md 2, "why there is no standby holder", and
     # test_switchboard.py 13 -- this is the SAME hazard reached by a different door.
     await call("alpha", "sw_leave", ext="writer", peer="alpha/absent-overnight",
                text="left while the box was off")

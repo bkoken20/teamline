@@ -150,6 +150,12 @@ wrong is everything that published the thing it checks. See R-2.
 registered with — or when the lane carries no identity at all, in which case there is nothing to
 prove. An anonymous lane cannot be protected; the code says so rather than pretending otherwise.
 
+⚠ **Scope corrected by R-8.** This guards the RE-ATTACH path — a socket coming back to a lane that
+still exists. It is not a general protection of the name. `register()` refuses only a **LIVE** lane,
+so a name whose holder has gone STALE, GONE or UNREACHABLE can be taken by anyone, with no identity
+and no waiting. That is deliberate — a lane which has lost its line cannot be rung to be told so —
+but this entry read as though identity now guarded lanes generally, and it does not.
+
 *A silence window before GONE.* `PROTOCOL.md` already promised that a lane is presumed dead after a
 period of silence. The code presumed it instantly. Restoring the window closes the register door and
 removes a divergence between the documented contract and the behaviour.
@@ -510,6 +516,12 @@ defect is *reached*, not what it is. Deleted.
 registration; registering without one requires a session id, for every team alike, because nothing
 else can say where to deliver. Such a lane reads UNREACHABLE until something holds a feed for it, so
 callers get voicemail rather than a ring into nowhere.
+
+⚠ **A consequence, added by R-8.** UNREACHABLE is not LIVE, so a lane registered this way is
+replaceable by anyone for as long as it exists — which, having no feed, is never less than the idle
+day. That is the documented path for a session whose harness cannot hold a socket, and it is the
+least protected one. The replacement is not refused; it is **recorded**, with whether the caller
+proved the lane's identity.
 
 **What attacking the fix found.** The fix falsified the tool's own docstring, which still implied
 that only one team needed a session id — and that docstring is what an MCP client shows the agent
@@ -1590,6 +1602,55 @@ writing path takes when nobody remembers the rule.
 
 ---
 
+## R-8 — a name nobody holds can be taken by anyone, and the record could not tell you who
+
+**Severity:** medium, and the interesting part is which half turned out to be the defect.
+
+**What was found.** `A2` protected the re-attach path by requiring proof of the lane's identity.
+`register()` refuses only a **LIVE** lane. An extension registered through `sw_register` holds no
+feed, so it reads UNREACHABLE — which `B1` made the documented path for a session whose harness
+cannot hold a socket — and UNREACHABLE is not LIVE. Reproduced: a stranger with no identity of the
+lane's took the name at once, and the **held voicemail went with it**, released to the stranger and
+marked delivered in the ledger.
+
+**Two fixes were tried and rejected, and that is most of this entry.**
+
+*Requiring identity to take the name.* Rejected: a lane that has lost its line cannot be rung to be
+told so, and a session coming back would be locked out of its own name.
+
+*Withholding the voicemail unless the caller proves the identity.* This was written, and the suite
+stayed green, and it was still wrong — which the walk caught and the suite did not. A lane registered
+by session id alone never gets a `gone_since`, so it lives for the full idle day; a session returning
+inside that day **with a new session id** — the ordinary case here, since every session has a new one
+— would have been refused its own messages. `PROTOCOL` §4 already promises the opposite in as many
+words: *"whoever registers that lane receives them."* The suite passed only because its own scenario
+waited long enough for the lane to be retired, which is exactly the case the rule does not bite.
+
+**What shipped instead.** The answer this system gives everywhere else: it is not authenticated, it
+is **logged**. The replacement row now records whether the caller proved the identity the lane was
+registered with, so *"the session came back"* and *"somebody else took the name"* are different rows
+rather than the same row. Nothing is refused, nothing is withheld, and the operator page shows the
+difference.
+
+**A third symptom did not reproduce, and the reason is worth having.** The finding notes that
+`register()` is the one retire path that does not end the lane's calls — `unregister`,
+`operator_retire` and the silence sweep all do. The asymmetry is real; the state it would matter in
+cannot be reached. **Taking part in a call touches the lane**, so a lane in an open call is LIVE, and
+a LIVE lane is refused. Going non-LIVE takes the two hours of silence by which the call has hit its
+own two-hour cap. A change was written, and then removed along with its check: the perturbation
+runner reported the check `SILENT`, which is what a check that cannot fail looks like. The argument
+is in the code where the call would have gone.
+
+**What this corrects elsewhere.** `A2`'s entry read as though identity now guarded lanes generally;
+its scope is the re-attach path and it says so. `B1`'s entry did not mention that the path it
+documents is the least protected one; it does now.
+
+**The check.** `R-8-record` removes the identity marker from the replacement row. The check goes red,
+because on a board with no authentication an unrecorded takeover is indistinguishable from a session
+coming home.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1599,7 +1660,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 163 of the 197 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 158 of the 199 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

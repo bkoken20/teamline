@@ -210,6 +210,14 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-8-record", suite="unit", file="teamline/switchboard.py",
+         find='was=h, same_identity=_same)',
+         repl='was=h)',
+         must_fail="a replacement by a different session is recorded as such, not silently",
+         why="takes the identity marker back out of the replacement row. On a board with no "
+             "authentication, 'the session came back' and 'somebody else took the name' being the "
+             "same row is the whole defect -- the record is the only thing that can tell them apart"),
+
     dict(id="R-7-cap", suite="unit", file="teamline/switchboard.py",
          find="        self._check_text(text)\n        c = self._calls.get(call_id)",
          repl="        c = self._calls.get(call_id)",

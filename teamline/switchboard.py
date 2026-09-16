@@ -456,7 +456,29 @@ class Switchboard:
                 # the credential. The age is what a caller needs; the identity is not.
                 raise SwitchError(f"{full} is LIVE (seen {int(self.now() - old['last_seen'])}s ago); "
                                   f"pick another name or wait for it to go STALE")
-            self._commit("retired", ext=full, reason="replaced", by=full, was=h)
+            # WHAT A REPLACEMENT INHERITS, AND WHAT THE LEDGER SAYS ABOUT IT.
+            #
+            # Taking a name nobody is holding stays allowed, and the held voicemail still goes with
+            # it. That is deliberate and documented (PROTOCOL 4: "whoever registers that lane
+            # receives them"), and gating it on identity was tried and rejected here: a lane
+            # registered by session id alone never gets a `gone_since`, so it lives for the full idle
+            # day, and a session that came back inside that day with a NEW session id -- which is the
+            # ordinary case, not the rare one -- would have been refused its own messages.
+            #
+            # So the answer is the one this system gives everywhere else: it is not authenticated, it
+            # is LOGGED. Every replacement now records whether the caller proved the identity the lane
+            # was registered with, so "the same session came back" and "somebody else took the name"
+            # are different rows rather than the same row.
+            _keys = [k for k in (old.get("sid"), old.get("session_id")) if k]
+            _same = (not _keys) or (sid in _keys) or (session_id in _keys)
+            # `register` is the one retire path that does NOT end the lane's calls -- `unregister`,
+            # `operator_retire` and the silence sweep all do. That asymmetry is real and it is left
+            # alone, because the state it would guard cannot be reached: taking part in a call
+            # touches the lane, so a lane in an open call is LIVE, and a LIVE lane is refused three
+            # lines above. Going non-LIVE takes the two hours of silence by which the call has hit
+            # its own two-hour cap. Adding the call to this path would be a change with nothing
+            # behind it and a check that could never go red; the entry records the argument instead.
+            self._commit("retired", ext=full, reason="replaced", by=full, was=h, same_identity=_same)
         self._commit("register", ext=full, team=team, name=name, session_id=session_id, feed=bool(feed),
                      now=(now or "")[:NOW_MAX], sid=sid)
         self._release_vm(full)

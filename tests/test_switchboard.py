@@ -648,6 +648,26 @@ def main():
            got and "hello wait" in got[0]["text"] and not s3.pending_for("beta/a"), got)
     asyncio.run(wcase())
 
+    # ---- 16. a replacement is allowed, and the ledger says whether it was the same session
+    # Taking a name nobody holds is deliberate, and the held voicemail goes with it -- PROTOCOL says
+    # so. What was missing is any way to tell "the session came back" from "somebody else took the
+    # name", which on a board with no authentication is the whole of the answer: it is not gated, it
+    # is LOGGED. Gating the mail on identity was tried and rejected: a lane registered by session id
+    # alone never gets a gone_since, lives the full idle day, and a session returning inside that day
+    # with a new id -- the ordinary case -- would have been refused its own messages.
+    SBz, sz, cz = fresh(tempfile.mkdtemp(prefix="sb_"))
+    sz.register("beta", "lane", now="working", session_id="sess-REAL", sid="sid-REAL")
+    cz.t += 3 * 3600                                   # past STALE: a LIVE lane is refused outright
+    sz.register("beta", "lane", now="back", session_id="sess-REAL", feed=True, sid="sid-REAL")
+    same = [x for x in sz.ledger_rows() if x["event"] == "retired" and x.get("ext") == "beta/lane"]
+    ck("a replacement proving the lane's identity is recorded as the same session",
+       same and same[-1].get("same_identity") is True, same[-1:] or "no retired row")
+    cz.t += 3 * 3600
+    sz.register("beta", "lane", now="mine now", session_id="sess-OTHER", feed=True, sid="sid-OTHER")
+    diff = [x for x in sz.ledger_rows() if x["event"] == "retired" and x.get("ext") == "beta/lane"]
+    ck("a replacement by a different session is recorded as such, not silently",
+       diff[-1].get("same_identity") is False, diff[-1:])
+
     # ---- 15. the silence rule applies to ONE of the two feed types, and the contract said neither
     # PROTOCOL told every client that 90 seconds of silence marks its lane GONE. That rule is
     # conditional on the lane having a session id, and the feed the README recommends has none -- so

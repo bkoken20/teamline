@@ -1019,6 +1019,14 @@ async def run(tmp):
     async with httpx2.AsyncClient() as hc:
         hz = await hc.get("http://127.0.0.1:%d/healthz" % PORT)
     ck("/healthz answers with CORS for a cross-origin fetch", hz.status_code == 200 and hz.headers.get("access-control-allow-origin") == "*" and hz.json().get("up") is True, dict(hz.headers))
+    # The delivery bookkeeping shrinks back. `pushed_at` and `retry_at` are keyed by message id and
+    # were only ever written to, so a broker that had carried a million messages held a million keys
+    # for messages settled long ago. By this point in the run the suite has pushed and settled dozens
+    # of messages through several lanes, so a number that still tracks every one of them is the
+    # defect; `pending` is what is genuinely still owed and `tracked` may not exceed it by much.
+    ck("delivery bookkeeping is released once a message is settled, not held for the process's life",
+       hz.json().get("tracked", 10 ** 6) <= hz.json().get("pending", 0) * 2 + 4,
+       {k: hz.json().get(k) for k in ("tracked", "pending")})
 
     # ---- hook path + observer ------------------------------------------------------------------------
     sid_feed = []

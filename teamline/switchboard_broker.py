@@ -122,8 +122,19 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
         resend_pending()
 
     def resend_pending():
-        """Re-push pending events whose retry time has come (no ack / refused ack / feed was down)."""
+        """Re-push pending events whose retry time has come (no ack / refused ack / feed was down).
+
+        Also the one place these two dictionaries shrink. Both are keyed by message id and were only
+        ever written: A8 bounded the ledger and the rows it retains, and did not look at the delivery
+        bookkeeping sitting beside them -- so a broker that had carried a million messages still held
+        a million keys for messages settled long ago. Pruning against the OUTBOX rather than at each
+        settlement point is deliberate: the outbox is the authority on what is still owed, so this
+        cannot drift out of step with a settlement path somebody adds later."""
         now = time.time()
+        live_ids = {e["id"] for e in sb._outbox}
+        for _book in (pushed_at, retry_at):
+            for _settled in [k for k in _book if k not in live_ids]:
+                del _book[_settled]
         for ev in sb._outbox:
             if ev["id"] in awaiting or retry_at.get(ev["id"], 0) > now:
                 continue
@@ -406,7 +417,11 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
     async def healthz(_req):
         """GET /healthz: tiny, CORS-open (a cross-origin page may fetch it); nothing else is CORS-open."""
         from starlette.responses import JSONResponse
+        # `tracked` is the delivery bookkeeping still held for messages that are not yet settled. It
+        # is here so that the claim "it does not grow without bound" is something an operator -- or a
+        # check -- can read from outside, rather than a statement about a closure nobody can see.
         return JSONResponse(dict(up=True, ts=time.time(), extensions=len(sb._ext), calls=len(sb.active_calls()),
+                                 pending=len(sb._outbox), tracked=len(pushed_at) + len(retry_at),
                                  state_file=state["stamp_ok"]),
                             headers={"Access-Control-Allow-Origin": "*", "Cache-Control": "no-store"})
 

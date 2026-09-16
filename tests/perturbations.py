@@ -210,6 +210,17 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-20", suite="e2e", file="teamline/switchboard_broker.py",
+         find="        live_ids = {e[\"id\"] for e in sb._outbox}\n"
+              "        for _book in (pushed_at, retry_at):\n"
+              "            for _settled in [k for k in _book if k not in live_ids]:\n"
+              "                del _book[_settled]\n",
+         repl="",
+         must_fail="delivery bookkeeping is released once a message is settled, not held for the process's life",
+         why="restores two dictionaries that were only ever written to. A8 bounded the ledger and the "
+             "rows retained and did not look at the delivery bookkeeping beside them, so a broker "
+             "that had carried a million messages held a million keys for messages long settled"),
+
     dict(id="R-18", suite="unit", file="teamline/switchboard.py",
          find='            if e.get("gone_reason") == "host":\n                return "GONE"\n',
          repl='',

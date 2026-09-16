@@ -424,6 +424,12 @@ the same thing eventually.
 
 **What was wrong.** Two separate leaks.
 
+⚠ **"Two" corrected by R-20.** Two were found and fixed; they were not all of them. The delivery
+bookkeeping sitting immediately beside the ledger — two dictionaries keyed by message id — was only
+ever written to, so a broker that had carried a million messages still held a million keys for
+messages settled long ago. `R-20` closes that, and names the two structures that genuinely cannot be
+bounded — which this entry should have done rather than counting to two and stopping.
+
 *Message text was uncapped on exactly the paths that carry content.* Receipts were capped at 300
 characters, now-lines at 200, delivery errors at 300 — but `say` and `leave` took whatever they were
 given. One caller could write a row of any size into an append-only ledger that is replayed into
@@ -1700,6 +1706,54 @@ on firing — the ordering it guards was never the problem.
 
 ---
 
+## R-20 — "two separate leaks" was a count, not a survey
+
+**Severity:** low, and the entry is mostly about the word *two*.
+
+**What was wrong.** `A8` found two unbounded structures, fixed them, and opened with *"two separate
+leaks"*. Two were found; they were not all of them. Sitting immediately beside the ledger are two
+dictionaries keyed by message id — the delivery bookkeeping: when each message was last pushed, and
+when it may be retried. Both were written in three places and **removed in none**. A broker that had
+carried a million messages still held a million keys for messages settled long ago, and the sweep that
+runs every second walked all of them.
+
+**The test that should have caught it.** `A8-rows` asserts the in-memory ledger is bounded, and it
+passes — it is about `_rows`. Nothing looked at the two dictionaries next to it. A check written to a
+finding covers the finding, and a count of leaks is not a survey of them.
+
+**The fix, and where it is placed.** The prune happens in the re-send sweep, against the **outbox**,
+rather than at each point where a message settles. The outbox is the authority on what is still owed,
+so it cannot drift out of step with a settlement path somebody adds later — a settlement-point fix
+would be correct today and quietly wrong the first time a new one appears.
+
+**What genuinely cannot be bounded, named rather than counted.** Two structures grow with the file and
+must:
+
+* `_delivered` — the set of message ids already handed over. Forgetting one means delivering it twice,
+  which is the defect `A1`, `A5` and `A6` all exist to prevent.
+* `_calls` — ended calls stay in memory because `sw_log(call_id)` reads them from there. Dropping them
+  would bound the memory and break transcript retrieval for every call that has finished.
+
+Both are the working set growing with the ledger, which `A8` conceded in general terms. They are
+listed here so the concession names something.
+
+**It is measurable from outside now.** `/healthz` reports `tracked` beside `pending`, so "it does not
+grow without bound" is a number an operator can read rather than an assertion about a closure nobody
+can see — and it is what the check reads.
+
+**The walk covered the hazard, not the win.** A prune keyed by message id has one obvious benefit and
+one obvious way to be wrong: dropping an entry for a message still **owed** discards its backoff, and
+the next sweep re-pushes at once. That converts a retry into hammering and would look like an
+improvement on any memory graph. Measured on a running broker: 40 messages sent and settled leave
+`tracked` at **0** where it would have been 40; one message left owed and never acked keeps its two
+entries with `pending` at 1; and that unacked message was re-pushed **once** in two and a half
+seconds, not dozens of times.
+
+**The check.** `R-20` removes the prune, and the bookkeeping count stops falling back to what is
+actually owed.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1709,7 +1763,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 159 of the 200 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 160 of the 201 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

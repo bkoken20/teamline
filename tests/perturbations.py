@@ -210,6 +210,16 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="V-3", suite="e2e", file="tests/test_switchboard_e2e.py",
+         find='"Host": "198.51.100.2:3790"',
+         # `{ADDR}` is substituted by the runner. Written out, this file would carry the address the
+         # check forbids -- it walks the whole tree, this file included.
+         repl='"Host": "{ADDR}:3790"',
+         must_fail="every address in this tree is loopback or a documentation range, never a real host",
+         why="puts a real-world private-range address back into a shipped file. The Host-header check "
+             "beside it stays green either way -- both addresses are served -- so the only thing that "
+             "can go red is the address check, which is the point"),
+
     dict(id="R-9-source", suite="e2e", file="teamline/switchboard.py",
          find="# now-line cap: 120 truncated real now-lines",
          # `{DATE}` and `{CLOCK}` are substituted by the runner. Written out here they would sit in

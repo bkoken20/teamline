@@ -1144,6 +1144,46 @@ time appears anywhere in this repository outside `docs/`.
 
 ---
 
+## V-3 — the verification that guards the push read FAILED on every run, and was read past
+
+**Severity:** high, and not because of what it found. **A gate whose verdict is FAILED every time
+protects nothing**: the next real failure arrives indistinguishable from the standing one. This
+stage had been failing since it was written, and the failure was being carried as "known".
+
+**What was wrong.** One test fixture sent a Host header carrying an **RFC 1918 address**, to prove
+the MCP endpoint serves a client whose Host is not loopback. A private-range address — it identifies nobody, and on that
+reading the failure was harmless, which is precisely why it survived. But this repository was forked
+out of a private deployment, so an address that *could* be somebody's real machine is a question a
+reader has no way to answer. The gate was right to ask it, and the answer should have been given in
+writing or the address changed — not neither.
+
+**The test that should have caught it.** The gate caught it, on every single run. Nothing in the
+shipped suite did, so a reader cloning this repository could not see the rule at all, and the only
+thing standing between a real address and publication was somebody reading a line of output.
+
+**The fix, and the shape that matters more than the fix.** The fixture uses `198.51.100.2`, from RFC
+5737's documentation range, which is reserved so that it can never route to a real host. Any
+non-loopback Host exercises the guard; a documentation address does it without raising a question.
+
+The rule is now an **allowlist** — loopback, unspecified, or one of the three documentation ranges;
+everything else fails. The denylist it replaces named two prefixes and would have passed the most
+common private range of all straight through. That is D-L1's stated limitation arriving in a second place: *a denylist cannot catch what
+nobody thought to list.* Walked with real values: it refuses every RFC 1918 range, the
+carrier-grade NAT range and ordinary public addresses, and admits all three documentation ranges.
+
+**What it does NOT cover, measured rather than guessed.** IPv4 only: an IPv6 address, or an internal
+hostname like `broker.something.internal`, would pass. Neither appears anywhere in this tree — that
+was checked, not assumed — and writing coverage for a class with zero instances is a structural
+choice with no number behind it. A four-part version string would be flagged as an address; there is
+none today, and a false positive that stops a publish fails in the right direction.
+
+**The check.** Claim `V-3` puts a private-range address back into a shipped file. The Host-header
+check beside it stays green either way, because both addresses are served — so the only thing that
+can go red is the address rule, which is what makes the claim worth anything. The claim cannot spell
+that address: this file is inside the tree the check walks, so the runner formats it at run time.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1153,7 +1193,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 154 of the 182 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 154 of the 183 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

@@ -205,7 +205,10 @@ async def run(tmp):
         ("HELD THE SOCKET (registered under the fallback team)" if eheld else (erc, eout[:160]))))
 
     # ---- a client arriving with a non-loopback Host header must be served ("Invalid Host header")
-    hc2 = httpx2.AsyncClient(headers={"X-Teamline-Party": "alpha", "Host": "10.0.0.2:3790"}, timeout=httpx2.Timeout(30.0))
+    # The address is from RFC 5737's documentation range on purpose: any non-loopback Host exercises
+    # the guard, and a documentation address cannot be mistaken for a machine somebody owns.
+    hc2 = httpx2.AsyncClient(headers={"X-Teamline-Party": "alpha", "Host": "198.51.100.2:3790"},
+                             timeout=httpx2.Timeout(30.0))
     async with hc2:
         async with Client(streamable_http_client(url, http_client=hc2)) as s2:
             res = await s2.call_tool("sw_directory", {})
@@ -326,6 +329,26 @@ async def run(tmp):
                     _asm.append("%s:%d" % (_rel, _nd.lineno))
     ck("no file in this tree assembles a string out of literal fragments",
        not _asm, sorted(set(_asm))[:8])
+
+    # ---- no address in this tree may be a real host ------------------------------------------------
+    # This repository was forked out of a private deployment, so an address that COULD be somebody's
+    # real machine is a question a reader has no way to answer. RFC 5737 reserves three ranges for
+    # documentation -- they can never route to a real host -- so the rule is an ALLOWLIST of those,
+    # plus the two addresses the software genuinely binds. An allowlist and not a denylist of private
+    # ranges, because a denylist is D-L1's limitation exactly: it cannot catch what nobody listed.
+    _ALLOWED_IP = ("127.0.0.1", "0.0.0.0", "192.0.2.", "198.51.100.", "203.0.113.")
+    _ip0 = _re0.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
+    _addrs = []
+    for _dp, _dn, _fs in os.walk(_root):
+        _dn[:] = [d for d in _dn if not d.startswith(".") and d != "__pycache__"
+                  and not any(_fn0.fnmatch(d, p) for p in _ignored)]
+        for _f in sorted(_fs):
+            _rel3 = os.path.relpath(os.path.join(_dp, _f), _root)
+            _txt3 = io.open(os.path.join(_dp, _f), encoding="utf-8", errors="replace").read()
+            _addrs += ["%s:%s" % (_rel3, _a) for _a in _ip0.findall(_txt3)
+                       if not any(_a.startswith(_p) for _p in _ALLOWED_IP)]
+    ck("every address in this tree is loopback or a documentation range, never a real host",
+       not _addrs, sorted(set(_addrs))[:8])
 
     # ---- the shipped source must not read as one deployment's incident diary ----------------------
     # Comments dated to a day, constants stamped with the wall-clock time somebody chose them, and

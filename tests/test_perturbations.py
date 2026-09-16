@@ -110,7 +110,10 @@ def main():
             needle = "zz-" + uuid.uuid4().hex[:12]
             payload = (p["repl"].replace("{NEEDLE}", needle)
                        .replace("{DATE}", time.strftime("%Y-%m-%d"))
-                       .replace("{CLOCK}", time.strftime("%H:%M")))
+                       .replace("{CLOCK}", time.strftime("%H:%M"))
+                       # `{ADDR}` is a private-range address, formatted rather than written, for the
+                       # same reason: spelled here it would sit in the tree the address check walks.
+                       .replace("{ADDR}", "%d.%d.%d.%d" % (10, 0, 0, 2)))
             write(path, src.replace(p["find"], payload).encode("utf-8"))
             out = run_suite(p["suite"], needle)
             fails = failed_checks(out)

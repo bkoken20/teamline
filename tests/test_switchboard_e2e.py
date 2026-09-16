@@ -1448,10 +1448,19 @@ async def run(tmp):
        seized.get("type") != "registered", (seized, loot[:1]))
     # ...and the rightful owner must still get back in, which is why the whole clause cannot simply
     # be deleted: a lane that loses its line cannot be rung to be told about it.
+    # A reconnect must not rewrite the lane's status line with the text the CLIENT LAUNCHED WITH.
+    # teamline_feed.py builds its URL once in main() and retries that same URL every 2 s, so `now`
+    # on any reconnect is whatever was on the command line when the session started -- minutes or
+    # hours ago. Re-stamping it does not merely show stale text: a model line younger than 30
+    # minutes outranks a derived one, so the launch text also outranks whatever /hook/now last said.
+    await call("alpha", "sw_now", ext="owned", text="walking the held-out gate")
     back = await websockets.connect(
         "ws://127.0.0.1:%d/ws?party=alpha&ext=owned&now=mine-again&sid=session-OWNER-0001" % PORT)
     again = json.loads(await asyncio.wait_for(anext(aiter(back)), 3))
     ck("...but the rightful holder reconnects with its own sid", again.get("type") == "registered", again)
+    _od = {e["ext"]: e for e in (await call("alpha", "sw_directory"))["extensions"]}.get("alpha/owned", {})
+    ck("a reconnect does not overwrite the lane's now line with the text it launched with",
+       _od.get("now", "").startswith("walking the held-out gate"), _od)
     await back.close()
     await asyncio.sleep(0.2)
 

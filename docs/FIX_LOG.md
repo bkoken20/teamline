@@ -2235,6 +2235,55 @@ A check that reports a false red costs exactly what one that cannot fail costs.
 
 ---
 
+## R-22 — every reconnect rewrote the lane's status line with its launch-time text
+
+**Severity:** low, and it is the kind that reads as correct behaviour: the line it shows is a line
+the session really did write, once, at startup.
+
+**What was wrong.** `teamline_feed.py` builds its WebSocket URL **once**, in `main()`, and retries
+that same URL every 2 seconds for the life of the process. So the `now=` it carries is whatever was
+on the command line when the session started. The broker's re-attach path took that value and called
+`set_now()`, which commits a `model` row and restamps the line.
+
+Measured on a lane that started with *"starting up"* and later said *"walking the F9 book"*: one
+socket blip put *"starting up"* back, aged zero. After a broker restart every lane re-attaches, so
+**every status line in the directory reverts at once**.
+
+**The second harm is the stamp, not the text.** A model line younger than 30 minutes outranks a
+derived one. So the reconnect did not merely show stale text: it made the launch text **outrank
+whatever `/hook/now` last reported**, for the next half hour. Measured: a derived line reading
+*"hook: running the held-out gate"* was replaced by *"starting up"* by a single reconnect.
+
+**The fix.** The re-attach branch no longer writes the line at all. It was set when the lane
+registered, by the session itself; only the session can say it has changed, through `sw_now` or the
+hook. A socket coming back is not news about what anyone is doing.
+
+**The alternative, and why it buys nothing.** The other design writes the line only when the lane has
+none. The case it covers is a lane registered with an **empty** line whose feed later attaches with
+text — and the documented flow cannot reach it: the hook always passes `--now`, and a feed-first
+registration takes the other branch entirely. Where the line *is* empty, the reconnect carries the
+same empty string, because it is the same URL. One condition, zero cases.
+
+**What the deletion could have taken with it, and did not.** Every `now` row also sets `last_seen`.
+Had that been the only thing refreshing liveness, a re-attached lane would have read its last_seen
+from whenever it last spoke and gone STALE while plainly connected. Walked: after 100 minutes of
+total silence, a re-attach returns `last_seen_age_s` to 0 with no `now` row written — `feed()`
+touches the lane itself.
+
+**A side effect worth recording, given the open row-rate finding.** A flapping socket used to append
+a `now` row per reconnect on top of the `feed` row. While a broker is down the client retries every
+2 seconds, so a minute of flapping wrote 60 rows where it now writes 30.
+
+**Prose.** No document claimed a reconnect refreshes the line, so nothing had to be corrected. The
+client's own `--now` help implied it by saying nothing, and now states that the value is the lane's
+opening line, is not re-sent, and that `sw_now` and `/hook/now` are what update it.
+
+**The check.** It runs at the wire: a lane sets a new line through `sw_now`, its rightful holder
+reconnects with a different `now=` in the URL, and the directory must still show what the session
+said. `R-22` puts the write back; the check goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

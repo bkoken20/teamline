@@ -124,7 +124,7 @@ async def hold(url, ping_s=25.0):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ext", required=True)
-    ap.add_argument("--now", default="")
+    ap.add_argument("--now", default="", help="the lane's OPENING line, sent when it registers. It is not re-sent: this URL is built once and every reconnect reuses it, so a reconnect would only ever restate what this session said at launch. sw_now and POST /hook/now update the line afterwards.")
     ap.add_argument("--sid", default="")
     ap.add_argument("--party", default=DEFAULT_PARTY)
     ap.add_argument("--session-id", default="")

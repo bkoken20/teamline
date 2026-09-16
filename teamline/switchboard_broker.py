@@ -239,8 +239,15 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
                 if e and (mine or (not bound and ((e["feed"] and not e["feed_up"]) or replacing))):
                     e["feed"] = True
                     sb.feed(team, name, True)
-                    if now:
-                        sb.set_now(team, name, now)
+                    # NOT the now line. `now` here is the client's LAUNCH-time text: teamline_feed.py
+                    # builds its URL once in main() and retries that same URL every 2 s, so a lane
+                    # that blipped -- or every lane at once, after a broker restart -- would have its
+                    # status reset to what the session said at startup. Re-stamping it is worse than
+                    # showing stale text: a model line younger than 30 minutes outranks a derived
+                    # one, so the launch text would also outrank whatever /hook/now last reported.
+                    # The line was set when the lane registered, by the session itself, and only the
+                    # session can say it has changed -- sw_now, or the hook. This branch is a socket
+                    # coming back, which is not news about what anyone is doing.
                     if sid:
                         e["sid"] = sid
                 else:

@@ -204,6 +204,15 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R-22", suite="e2e", file="teamline/switchboard_broker.py",
+         find="                    sb.feed(team, name, True)",
+         repl="                    sb.feed(team, name, True); sb.set_now(team, name, now) if now else None",
+         must_fail="a reconnect does not overwrite the lane's now line with the text it launched with",
+         why="writes the lane's status line from the reconnect URL, which carries the text the client "
+             "launched with -- the feed builds that URL once and retries it every 2 s. After a broker "
+             "restart every lane in the directory reverts to what its session said at startup, and the "
+             "fresh stamp makes that text outrank whatever the hook last derived"),
+
     dict(id="R-21", suite="e2e", file="docs/PROTOCOL.md",
          find="set_running(team, {session_id: running})",
          repl="the host liveness sweep",

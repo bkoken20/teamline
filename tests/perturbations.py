@@ -210,6 +210,24 @@ PERTURBATIONS = [
              "is a PHRASE, not an identifier -- and it read, to a stranger, as a reference to "
              "infrastructure they were assumed to know and which is defined nowhere in this repository"),
 
+    dict(id="R-7-cap", suite="unit", file="teamline/switchboard.py",
+         find="        self._check_text(text)\n        c = self._calls.get(call_id)",
+         repl="        c = self._calls.get(call_id)",
+         must_fail="an over-long message is refused rather than silently truncated",
+         why="reopens the third door into the ledger: operator_say is reachable over HTTP with no "
+             "credential, and its row is fanned out to both parties as part frames. A8 capped the two "
+             "doors it was looking at and this check tested only one of those"),
+
+    dict(id="R-7-structural", suite="e2e", file="teamline/switchboard.py",
+         # The same removal as R-7-cap, pinning the OTHER check. One is behavioural -- an over-long
+         # message is refused -- and one is structural: no method writes unbounded text at all. A
+         # fourth door would arrive past the first and be caught by the second.
+         find="        self._check_text(text)\n        c = self._calls.get(call_id)",
+         repl="        c = self._calls.get(call_id)",
+         must_fail="every method that writes text into the ledger bounds it -- by refusing or by truncating",
+         why="leaves a _commit of `text` with no cap and no slice, which is exactly the shape a new "
+             "writing path takes when nobody remembers the rule"),
+
     dict(id="R-26-route", suite="e2e", file="docs/PROTOCOL.md",
          find="| `POST /operator/say` | `{text, call_id}` — inject a line into any open call, attributed to the operator. **A write, and it needs no team name** |\n",
          repl="",

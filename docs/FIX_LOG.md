@@ -426,6 +426,12 @@ limit can split. That is a deliberate departure from the truncation used elsewhe
 where the values are status lines rather than content. And `_rows` is now a bounded deque, so what is
 *retained* is capped while the file stays the source of truth.
 
+⚠ **Corrected by R-7.** "A message longer than `TEXT_MAX` is refused" was true of two of the three
+doors into the ledger. `operator_say` — reachable over HTTP with **no credential** — was capped by
+nobody, and a 40,000-character row went in and was fanned out to both parties as part frames. The
+check written with this entry tested one door. The sentence above is true now; it was not when it
+was written.
+
 **What attacking the fix found.** The obvious way to get this wrong is to bound the wrong thing and
 break replay. Checked directly: a ledger of 5,201 rows, with the extension registered at row 1, and
 a fresh broker over the same file — the extension survives, because replay applies every row and only
@@ -1532,6 +1538,58 @@ implication that the knob can be configured.
 
 ---
 
+## R-7 — the message cap had three doors and guarded two
+
+**Severity:** medium. Reachable with no credential, and it undid `A8` on the ledger and on delivery
+at the same time.
+
+**What was wrong.** `say` and `leave` call `_check_text`. `operator_say` did not, and it is the third
+way text enters the ledger — reached by `POST /operator/say`, which takes no team name. Reproduced
+side by side on the same message:
+
+```
+  say          : refused -> message is 40000 chars; the limit is 4000
+  operator_say : ACCEPTED
+  longest say row in the ledger: 40000 chars;  TEXT_MAX = 4000
+```
+
+And that row does not simply sit there: it is fanned out to **both** parties as `len/300` part
+frames, so an unbounded row is unbounded delivery as well.
+
+**The test that should have caught it.** It existed, it was green, and it is the one `A8` shipped: *"an
+over-long message is refused rather than silently truncated"*. It exercised `leave`. One door of
+three, and the entry it belonged to stated the rule as though it held everywhere.
+
+**The fix, in two parts, because one of them only fixes today.** `operator_say` calls `_check_text`
+first, and the behavioural check now tries **every** door with the same message rather than the one
+it was written against. That closes the defect.
+
+The second part closes the *class*: a structural check that reads the source and requires every
+`_commit` of a `text=` to bound it — by refusing over the cap, or by truncating with a slice. A
+fourth door cannot arrive the way the third did.
+
+**And it accused an innocent method first.** Asked whether the *method* mentioned a cap anywhere, it
+flagged `answer`, which bounds its receipt inline as `(receipt or "")[:300]`. Bounded is bounded; a
+check that recognises only one spelling of it reports a defect that is not there, and a false
+accusation costs exactly the trust a missed one does. It reads the argument now, not the function.
+
+**The walk went over the wire, not through the object.** The added line raises, and the HTTP route
+catches `SwitchError` and answers `{"ok": false}` — so a raise in the wrong place would have become a
+500 rather than a refusal. Over a real socket with no credential: the over-long POST answers *"message
+is 4001 chars; the limit is 4000"*, the longest text anywhere in the ledger afterwards is **27
+characters**, and a legal line still lands. A cap that breaks the route would not be a fix.
+
+**What this entry does NOT close, stated rather than folded in.** The same review item notes a second
+mechanism: any feed holder can append a `touch` row per unrecognised frame, at line rate. `A8` bounded
+row **size**; nothing bounds row **rate**. That is a different defect with a different fix and it is
+in the open list below, not quietly inside this one.
+
+**The checks.** `R-7-cap` removes the guard and the behavioural check goes red. `R-7-structural` is
+the same removal pinning the other check, because a `_commit` of unbounded text is the shape a new
+writing path takes when nobody remembers the rule.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -1541,7 +1599,8 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 162 of the 196 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 163 of the 197 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |
 | No `pyproject.toml`: this is run-from-source, not an installable package. The README does not claim otherwise. | open, may be intended |

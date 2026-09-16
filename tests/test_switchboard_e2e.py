@@ -416,6 +416,36 @@ async def run(tmp):
     ck("the security section names every surface that needs no team name",
        not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
 
+    # ---- every door into the ledger must bound the text it writes ---------------------------------
+    # A8 capped `say` and `leave`. `operator_say` was the third door and was capped by nobody, so an
+    # unauthenticated HTTP POST wrote a 40,000-character row -- then fanned out to both parties as
+    # part frames. The behavioural check for that lives in the unit suite; this one is structural, so
+    # a FOURTH door cannot arrive the same way: any method that commits a `text=` must bound it,
+    # either by refusing over the cap or by truncating to one.
+    # The rule reads the ARGUMENT, not the function. A first version asked whether the method
+    # mentioned a cap anywhere and accused `answer`, which bounds its text inline with a slice --
+    # `(receipt or "")[:300]`. Bounded is bounded; a check that only recognises one spelling of it
+    # reports a defect that is not there, and a false accusation costs exactly as much trust as a
+    # missed one.
+    _sb8 = io.open(os.path.join(PKG, "switchboard.py"), encoding="utf-8").read()
+    _unbounded = []
+    for _fn in _ast0.walk(_ast0.parse(_sb8)):
+        if not isinstance(_fn, (_ast0.FunctionDef, _ast0.AsyncFunctionDef)):
+            continue
+        _guarded = "_check_text" in _ast0.dump(_fn)
+        for _n in _ast0.walk(_fn):
+            if not (isinstance(_n, _ast0.Call) and getattr(_n.func, "attr", "") == "_commit"):
+                continue
+            for _k in _n.keywords:
+                if _k.arg != "text":
+                    continue
+                _sliced = any(isinstance(_s, _ast0.Subscript) and isinstance(_s.slice, _ast0.Slice)
+                              for _s in _ast0.walk(_k.value))
+                if not (_guarded or _sliced):
+                    _unbounded.append("%s:%d" % (_fn.name, _n.lineno))
+    ck("every method that writes text into the ledger bounds it -- by refusing or by truncating",
+       not _unbounded, _unbounded)
+
     # ---- the HTTP surface table must list every route the broker serves ---------------------------
     # It listed six of seven. The missing one is `POST /operator/say`, which is a WRITE reachable with
     # no credential -- so the one route a reader would most want in that table was the one not in it.

@@ -584,12 +584,31 @@ def main():
     sb2.register("alpha", "big", now="n", feed=True)
     sb2.register("alpha", "recv", now="n", feed=True)
     huge = "x" * (SBb.TEXT_MAX + 1)
-    try:
-        sb2.leave("alpha", "big", "alpha/recv", huge)
-        ck("an over-long message is refused rather than silently truncated", False, "accepted")
-    except SBb.SwitchError as e:
-        ck("an over-long message is refused rather than silently truncated",
-           str(SBb.TEXT_MAX) in str(e), str(e)[:120])
+    # EVERY path that writes text, not the one this check happened to be written against. It tested
+    # `leave` alone and stayed green while `operator_say` -- reachable over HTTP with no credential --
+    # put a 40,000-character row into the ledger, which is then fanned out to both parties as part
+    # frames. A cap enforced on two of three doors is not a cap.
+    cb.t += 1
+    rb = sb2.call("alpha", "big", "alpha/recv", "s", "o")
+    sb2.answer("alpha", "recv")
+    doors = {
+        "leave": lambda: sb2.leave("alpha", "big", "alpha/recv", huge),
+        "say": lambda: sb2.say("alpha", "big", huge),
+        "operator_say": lambda: sb2.operator_say(rb["call_id"], huge),
+    }
+    accepted = []
+    for _name, _call in doors.items():
+        try:
+            _call()
+            accepted.append(_name)
+        except SBb.SwitchError as e:
+            if str(SBb.TEXT_MAX) not in str(e):
+                accepted.append("%s (refused, but not for length: %s)" % (_name, str(e)[:40]))
+    ck("an over-long message is refused rather than silently truncated", not accepted, accepted)
+    ck("...and no ledger row carries more text than the cap allows",
+       max([len(str(x.get("text", ""))) for x in sb2.ledger_rows()] or [0]) <= SBb.TEXT_MAX,
+       max([len(str(x.get("text", ""))) for x in sb2.ledger_rows()] or [0]))
+    sb2.hangup("alpha", "big", "done")
     ok = sb2.leave("alpha", "big", "alpha/recv", "x" * SBb.TEXT_MAX)
     ck("...and a message exactly at the limit is accepted", ok["queued"] is True, ok)
     for i in range(SBb.ROWS_KEPT + 50):

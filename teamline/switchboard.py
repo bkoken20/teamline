@@ -665,6 +665,11 @@ class Switchboard:
         return dict(call_id=c["call_id"], state="IN_CALL", lines=len(c["lines"]))
 
     def operator_say(self, call_id, text):
+        # The cap applies here too, and it did not. This is the third door into the ledger, it is
+        # reachable over HTTP with NO credential, and the row it writes is fanned out to both parties
+        # as part frames -- so an unbounded row is unbounded delivery as well. A8 capped `say` and
+        # `leave` and stopped at the two doors it was looking at.
+        self._check_text(text)
         c = self._calls.get(call_id)
         if not c or c["state"] != "IN_CALL":
             raise SwitchError(f"call {call_id!r} is not open")

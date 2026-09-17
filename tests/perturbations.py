@@ -207,6 +207,19 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R2-6", suite="e2e", file="tests/test_switchboard_e2e.py",
+         # Targets the SUITE, not this file. A claim whose find text lives in perturbations.py
+         # quotes itself: the text then occurs twice and the runner refuses it as ambiguous, which
+         # is correct and is why this comes at the defect from the other side -- renaming a check so
+         # that an existing claim names nothing, which is exactly how E-L1 was orphaned.
+         find='    ck("a missing node is reported, not raised -- the rest of the suite runs, as both files promise",',
+         repl='    ck("a missing node is reported (RENAMED, so the claim naming it now points at nothing)",',
+         why="points a claim at a check that does not exist -- which is what a rename leaves behind, "
+             "and what went unnoticed for a day because the cross-check for it was asserted in a "
+             "comment and in the fix log and had never been written. The runner cannot call it STALE, "
+             "since the claim's find text is fine; it reports NORUN, 45 minutes into a gate run",
+         must_fail="...and the check each claim names still exists in the suite it names"),
+
     dict(id="R2-5", suite="e2e", file="tests/test_switchboard_e2e.py",
          find="        return s.getsockname()[1]",
          repl="        return 3792",
@@ -388,12 +401,15 @@ PERTURBATIONS = [
     # This one perturbs the RUNNER's own source. That is safe and deliberate: the runner has already
     # been imported by the time it edits anything, so its behaviour this run is unaffected, and the
     # check it is proving reads that file as DATA rather than importing it.
-    dict(id="E-L1", suite="e2e", file="tests/test_perturbations.py",
-         find='print("all %d claims in the fix log hold: each names a check that goes RED when its fix is undone."',
-         repl='print("all %d claims hold: every fix is load-bearing and every check can fail."',
-         must_fail="the perturbation runner does not claim to verify every check when it pins a subset",
-         why="puts back the verdict the repository shipped with -- it pinned 24 of 178 checks and "
-             "said every check can fail, which devalues the 24 that are real"),
+    # E-L1 was removed, not re-pointed. The check it named was REPLACED during R-30 -- the old
+    # one grepped this runner's source for one spelling of an overstatement, and the new one
+    # reads what the runner prints -- and the replacement carries its own claim, `R-30`. This
+    # claim's perturbation edits a line that new check never reads, so re-pointing it would have
+    # produced a SILENT: a claim that cannot fail, pinning a check that is already pinned.
+    #
+    # It was orphaned for a day and nothing said so, because the cross-check that would have
+    # noticed was asserted in a comment and in the fix log and had never been written. It exists
+    # now, in the end-to-end suite, beside the one that checks `find` text.
 
     dict(id="D-L2", suite="e2e", file="docs/FIX_LOG.md",
          find="HISTORY STATUS (checked by the suite): CLEAN",

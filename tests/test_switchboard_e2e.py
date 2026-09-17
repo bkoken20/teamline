@@ -588,8 +588,11 @@ async def run(tmp):
        not _unsaid, {"derived from the code": sorted(set(_open)), "missing from the section": _unsaid})
 
     # ---- every perturbation claim must still APPLY to this repository -----------------------------
-    # There was already a cross-check that every claim names a CHECK that exists. Nothing checked the
-    # other half: that the text it edits is still there. A claim whose `find` has gone is reported
+    # Two halves, and BOTH are asked here. This comment used to open by saying a cross-check for the
+    # other half already existed. It did not -- nothing in either suite asserted it, and the fix log
+    # repeated the claim. The half below (the text a claim edits) was written first; the half after
+    # it (the check a claim names) was written the day a gate run found a claim naming a check that
+    # had been renamed out from under it. A claim whose `find` has gone is reported
     # STALE -- correctly -- but only by the runner, which re-runs a whole suite per claim and takes
     # half an hour. Editing one README line made one claim stale, twice in a day, and the cost of
     # noticing was that half hour both times. This is the same question asked in a second, so any run
@@ -607,6 +610,45 @@ async def run(tmp):
             _ambig.append("%s -> %d places" % (_p["id"], _n8))
     ck("every perturbation claim's target text is still in the file it names",
        not _stale and not _ambig, {"stale": _stale, "ambiguous": _ambig})
+
+    # ---- ...and the CHECK each claim names must exist ---------------------------------------------
+    # The comment above said this cross-check already existed. It did not: nothing in either suite
+    # asserted it, and the fix log said the same thing. A check asserted in prose and never written is
+    # worse than a missing one, because it stops anyone writing it.
+    #
+    # What it cost: renaming a check left `E-L1` naming a name that exists nowhere. The runner cannot
+    # call that STALE -- the claim's `find` text is fine -- so it reports NORUN, and only after
+    # re-running a whole suite for that claim, 45 minutes into a gate run. This asks it in a second.
+    #
+    # Names come from the AST, not a text search: a `ck("...")` name written across two adjacent
+    # string literals is one Constant to the parser and two fragments to a grep. Names built by
+    # formatting are not Constants at all, so they are counted and reported rather than silently
+    # skipped -- a check that quietly ignores what it cannot read is a check that cannot fail.
+    _suite_file = {"unit": "test_switchboard.py", "e2e": "test_switchboard_e2e.py"}
+    _known, _dynamic = {}, {}
+    for _sname, _fname in _suite_file.items():
+        # NOT `_tdir`: that name is bound further down this function, and reading it here raises
+        # UnboundLocalError INSIDE the check -- no PASS, no FAIL, a traceback where a verdict
+        # belongs. The same slip as R-16, which is recorded a few hundred lines above this file.
+        _tpath8 = os.path.join(os.path.dirname(os.path.abspath(__file__)), _fname)
+        _tree8 = _ast0.parse(io.open(_tpath8, encoding="utf-8").read())
+        _names, _dyn = set(), 0
+        for _n8 in _ast0.walk(_tree8):
+            if isinstance(_n8, _ast0.Call) and isinstance(_n8.func, _ast0.Name) and _n8.func.id == "ck" and _n8.args:
+                _a8 = _n8.args[0]
+                if isinstance(_a8, _ast0.Constant) and isinstance(_a8.value, str):
+                    _names.add(_a8.value)
+                else:
+                    _dyn += 1
+        _known[_sname], _dynamic[_sname] = _names, _dyn
+    _orphans = []
+    for _p in _PERTS:
+        _want, _suite8 = _p["must_fail"], _p.get("suite", "e2e")
+        if not any(_want in _k for _k in _known.get(_suite8, ())):
+            _orphans.append("%s -> %s (%s)" % (_p["id"], _want[:44], _suite8))
+    ck("...and the check each claim names still exists in the suite it names",
+       not _orphans, dict(orphans=_orphans[:6], names_read=sum(len(v) for v in _known.values()),
+                          names_built_by_formatting=_dynamic))
 
     # ---- every door into the ledger must bound the text it writes ---------------------------------
     # A8 capped `say` and `leave`. `operator_say` was the third door and was capped by nobody, so an

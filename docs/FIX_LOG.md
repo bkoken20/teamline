@@ -1809,10 +1809,14 @@ claim, which at 55 claims is **about half an hour**. So a one-character problem 
 each occasion by the most expensive instrument available, after the work that caused it was long
 finished.
 
-**The test that should have caught it.** Half of it existed. A cross-check already asserts that every
-claim names a **check** that exists — added after a rename orphaned one. Nothing asserted the other
-half: that the **text it edits** is still there. Both are the same question — *does this claim still
-apply?* — and only one of them was being asked.
+**The test that should have caught it, and a correction to this paragraph.** This entry said half of
+it existed — that a cross-check already asserted that every claim names a **check** that exists, and
+that only the other half, the **text it edits**, went unasserted. **That was false, and it was false
+when it was written.** No such cross-check existed in either suite. The half written here was the
+`find`-text one; the check-name one was asserted in this entry and in a comment in the suite, and
+nowhere else. It was written a day later, after a gate run found a claim naming a check that had been
+renamed out from under it — see `R2-6`. A check asserted in prose and never built is worse than a
+missing one, because it persuades the next person not to write it.
 
 **The fix, in two parts.** The check now asks both, and it runs inside the end-to-end suite: every
 claim's `find` must occur in the file it names, exactly once unless it declares otherwise. That turns
@@ -2751,6 +2755,52 @@ server actually bound, names the port, and names the variable that pins one.
 
 ---
 
+## R2-6 — a claim named a check that did not exist, and the guard against that was fiction
+
+**Severity:** medium against this log's own credibility. The repository asserted, in two places, that
+a cross-check existed. It did not. Found by the publish gate, which is the only thing that runs every
+claim.
+
+**What the gate found.** `E-L1` reported **NORUN**: *the suite stopped before this check ran, so the
+claim is UNTESTED.* Its `must_fail` named *"the perturbation runner does not claim to verify every
+check when it pins a subset"* — a check **replaced** the day before, under `R-30`, by one that reads
+what the runner prints instead of grepping its source. The claim was left naming a string that exists
+nowhere in the tree.
+
+**Why nothing caught it sooner.** The runner cannot call such a claim `STALE`: that verdict is for a
+claim whose **find** text has gone, and this one's was intact. It can only discover it by running the
+claim — a whole suite — and noticing the named check never reported. That took 45 minutes and a full
+gate run.
+
+**And the guard that should have made it a second was imaginary.** The suite's own comment opened
+with *"There was already a cross-check that every claim names a CHECK that exists"*, and this log's
+`C-L1c` entry said the same. **Neither was true.** Nothing in either suite asserted it; only the
+`find`-text half had ever been written. A check asserted in prose and never built is worse than one
+that is simply missing, because it persuades the next person not to write it — it persuaded me,
+twice, in the entry and in the comment.
+
+**The fix, in three parts.** The cross-check now exists, beside the one it was always paired with in
+the prose: every claim's `must_fail` must name a check that exists in the suite it names. Both
+assertions — the comment and the entry — are corrected to say what was actually built and when. And
+`E-L1` is **removed rather than re-pointed**: the check it named was replaced, the replacement carries
+its own claim in `R-30`, and E-L1's perturbation edits a line that new check never reads, so
+re-pointing it would have produced a claim that cannot fail.
+
+**Names come from the AST, not from a search.** A `ck("...")` name written across two adjacent string
+literals is one string to the parser and two fragments to a grep — and this file has such names. Names
+built by formatting are not constants at all: they are **counted and reported** rather than skipped,
+because a check that quietly ignores what it cannot read is a check that cannot fail. Measured on the
+current tree: **221 names read, none built by formatting.**
+
+**The check that raised before it failed.** The first version read the tests directory from a name
+bound further down the same function, so it raised `UnboundLocalError` *inside* the check — no PASS,
+no FAIL, a traceback where a verdict belongs. That is the same slip as `R-16`, in the same file, by
+the same hand.
+
+**The check, and why it comes at the defect from the other side.** `R2-6` RENAMES a check in the suite, so an existing claim names nothing — which is exactly how `E-L1` was orphaned. It was written the obvious way first, editing a `must_fail` line in `perturbations.py`, and the runner refused it as **AMBIG**: a claim whose target text lives in that file **quotes itself**, so the text occurs twice and no perturbation of it can be exact. The refusal was right.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -2760,7 +2810,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 156 of the 232 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 157 of the 233 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

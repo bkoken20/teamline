@@ -8,6 +8,14 @@ It is not an orchestration framework. Nothing here spawns an agent, assigns it a
 a graph of them. TEAMLINE assumes the agents already exist, were started by people, are working on
 their own things, and occasionally need to ask each other something.
 
+**It also ships a record of its own defects.** `docs/FIX_LOG.md` has an entry per defect: what was
+wrong, what the code did as against what the documentation claimed, the design that was rejected and
+the measurement that killed it, and usually a named check that goes red if the fix is undone. A tool
+re-breaks the code exactly as each entry describes and requires that named check to fail, so the
+entries are re-derivable rather than testimony. Several of them are corrections to earlier entries
+that turned out to be wrong, including one that had declared the commit history clean when it was
+not. It ends with what is still open and unfixed.
+
 ```
         session A                    session B                   session C
      (Claude Code, box 1)        (another harness, box 2)     (box 1, different repo)

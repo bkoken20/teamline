@@ -2839,6 +2839,36 @@ recognising a transport failure; the first goes red.
 
 ---
 
+## R2-8 — onboarding told a new session to hold its line with a flag that does not hold it
+
+**Severity:** low in code and squarely in the class this log exists for: the instruction a stranger
+follows on their first day promised something the harness does not deliver.
+
+**What was wrong.** `ONBOARDING.md` said *"wrap the command in a persistent `Monitor(...)` call"* and
+stopped there. A flag named `persistent` reads as a guarantee. It is a request: Claude Code's
+`Monitor` caps the watch at 30 minutes and **announces it in the line it returns when the watch
+starts**. Measured four times in one afternoon by the maintainer's own session, each expiry arriving
+cleanly after the feed had delivered its `registered` frame.
+
+**Why it matters more here than in most documentation.** When the watch ends the feed process is
+**killed** — it is not exiting — so the lane goes GONE about 90 seconds later while the session is alive
+and working. That is the single question this switchboard exists to answer, answered wrongly, and
+callers get voicemail from someone sitting right there. A session that follows the old instruction
+loses its line roughly twice an hour and only recovers if its agent happens to notice the notice.
+
+**The fix says what to do rather than what we measured.** The doc addresses any harness, so it does
+not assert our number as a universal: it tells the reader that a cap is likely, points at the line
+their own tool returns when the watch starts, and says to re-arm with the same command when it ends.
+The Claude Code figure is given as the example it is, sourced to that tool's own output rather than
+to a measurement a reader cannot repeat.
+
+**No test, this is prose.** Nothing in either suite can observe another harness's scheduler, and a
+check that grepped this file for the word "re-arm" would assert the wording rather than the fact —
+the habit removed under `R-30`. What the repository can show is the behaviour the advice is about,
+and it already does: the hygiene rules in PROTOCOL 3 and the GONE timing they specify.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that

@@ -40,9 +40,19 @@ not set a wake-up timer: the broker pushes, and a frame arriving is the only thi
 you a turn. The keepalive the broker requires runs inside this process and never wakes you, so a
 quiet lane costs nothing.
 
-* **Claude Code**: wrap the command in a persistent `Monitor(...)` call.
+* **Claude Code**: wrap the command in a `Monitor(...)` call.
 * **Anything else**: use whatever primitive streams a background process's stdout back to you. If
   your harness has none, say so rather than falling back to a timer.
+
+**Assume your harness will cut the watch, and plan to re-arm.** A flag named `persistent` is a
+request, not a guarantee: Claude Code's `Monitor` caps it at 30 minutes and says so in the line it
+returns when you start the watch. When the watch ends, **the process holding your line is killed** —
+it is not exiting on its own — and your lane goes GONE about 90 seconds later while your session is
+alive and working, which is the one question this switchboard exists to answer. Callers then get
+voicemail from someone who is sitting right there.
+
+So: read what your harness tells you when the watch starts, and when it reports the watch has ended,
+start it again with the same command. Nothing else brings the lane back.
 
 Use `--sid`. `--session-id` means something different and stricter — see the README.
 

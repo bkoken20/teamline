@@ -2801,6 +2801,44 @@ the same hand.
 
 ---
 
+## R2-7 — the CLI answered a stopped broker with 127 lines of our internals
+
+**Severity:** low in mechanism, high in where it lands: this is the **first command the README tells
+a reader to type**, and a stopped broker is the commonest thing to meet on a first run.
+
+**What was wrong.** Measured, pointed at a port nothing listens on: **exit 1, 127 lines**, an
+`ExceptionGroup` traceback ending in `httpx2.ConnectError: All connection attempts failed`, naming
+**neither** the address it dialled **nor** the variable that moves it. The feed client had been taught
+both of those under an earlier finding; the CLI never was. Side by side, same dead address: the feed
+answers in **one** structured line carrying the URL and the knob, the CLI in 127 carrying neither.
+
+**Found while walking `R-32`, and deliberately left out of it.** It is a different defect from the
+bare-invocation traceback that entry fixed, and folding it in would have been a batch.
+
+**The fix classifies; it does not swallow.** A `try/except` that ends in a friendly sentence is the
+change most likely to hide a real bug, so the exception **tree** is searched for a transport-level
+failure and **anything else is re-raised untouched**. The tree rather than the exception, because the
+MCP client raises through an `ExceptionGroup` and the `ConnectError` is a leaf several levels down;
+`__cause__` and `__context__` are followed too, with an id set, since those links can form a cycle.
+
+**The walk went after what the classifier must REFUSE to claim, not the case it was written for.**
+Against a live broker: a real tool returns its JSON with no diagnosis; an **unknown tool name**
+returns the broker's own *"Unknown tool"* answer — claiming "unreachable" there would send a reader to
+the network to debug a typo. **Malformed JSON** on the command line still arrives as a real
+`JSONDecodeError` traceback. Nothing listening gives two lines and exit 3. A socket that **accepts
+and then closes** is claimed, correctly: it is transport-level, and the address is still the thing
+worth printing.
+
+**One thing measured and NOT fixed here.** A tool-level error answer still exits **0**, so a shell
+script cannot tell "it worked" from "the broker said no" by exit code. That is a separate matter from
+this finding and is not touched by it.
+
+**The check.** Two: the answer is a line rather than a traceback, and it names the URL and the
+variable — the same pair the feed client's checks assert, written beside them. `R2-7` stops the CLI
+recognising a transport failure; the first goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -2810,7 +2848,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 157 of the 233 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 158 of the 235 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

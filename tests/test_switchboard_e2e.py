@@ -1117,6 +1117,25 @@ async def run(tmp):
         _out = _dead.stdout
     except subprocess.TimeoutExpired as ex:
         _out = (ex.stdout or b"").decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
+    # ---- and the CLI, which is the tool the README tells you to type FIRST ------------------------
+    # The feed client was taught the two lines below under this same finding. The CLI was not, and it
+    # is the one the README's own examples invoke: pointed at a stopped broker it answered with 127
+    # lines of ExceptionGroup traceback ending in httpx2.ConnectError, naming neither the address it
+    # dialled nor the variable that moves it. A stranger's first command, answered with our internals.
+    def _run_dead_cli():
+        return subprocess.run([sys.executable, os.path.join(PKG, "teamline_cli.py"), "sw_directory"],
+                              capture_output=True, text=True, encoding="utf-8", timeout=30,
+                              env=dict(os.environ, TEAMLINE_URL="http://127.0.0.1:3999",
+                                       TEAMLINE_PARTY="alpha"))
+    _dcli = await asyncio.to_thread(_run_dead_cli)
+    _cout = (_dcli.stdout or "") + (_dcli.stderr or "")
+    _clines = [l for l in _cout.splitlines() if l.strip()]
+    ck("the CLI reports an unreachable broker in a line, not a traceback",
+       "Traceback" not in _cout and len(_clines) <= 4 and _dcli.returncode != 0,
+       dict(exit=_dcli.returncode, lines=len(_clines), tail=_clines[-2:] if _clines else []))
+    ck("...naming the URL it tried and the variable that moves it, as the feed client does",
+       "127.0.0.1:3999" in _cout and "TEAMLINE_URL" in _cout, _cout[-200:])
+
     ck("an unreachable broker is reported with the URL the client actually tried",
        "127.0.0.1:3999" in _out, _out[:200])
     ck("...and with the knob that changes it, so the cause is findable",

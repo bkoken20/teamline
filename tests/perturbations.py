@@ -207,6 +207,15 @@ PERTURBATIONS = [
              "in it and nothing would say so -- and every later row describes a world that includes "
              "the one that was skipped"),
 
+    dict(id="R2-7", suite="e2e", file="teamline/teamline_cli.py",
+         find="        hit = _transport(ex)",
+         repl="        hit = None",
+         must_fail="the CLI reports an unreachable broker in a line, not a traceback",
+         why="stops the CLI recognising a transport failure, so a stopped broker is answered with "
+             "the raw ExceptionGroup traceback again -- 127 lines ending in httpx2.ConnectError, "
+             "naming neither the address dialled nor the variable that moves it. It is the first "
+             "command the README tells a reader to type"),
+
     dict(id="R2-6", suite="e2e", file="tests/test_switchboard_e2e.py",
          # Targets the SUITE, not this file. A claim whose find text lives in perturbations.py
          # quotes itself: the text then occurs twice and the runner refuses it as ambiguous, which

@@ -2976,6 +2976,32 @@ names both.
 
 ---
 
+## R2-12 — onboarding still said to hold the feed inside a Monitor, and to re-arm it
+
+**Severity:** medium. `ONBOARDING.md` is the file written to be handed to an agent on its first day.
+
+**What was wrong.** `R2-8` fixed half of this. It warned that a Claude Code `Monitor` is capped at 30
+minutes and that the process under it is killed, and then kept the instruction that produces exactly
+that outcome: *"wrap the command in a `Monitor(...)` call"*, and when the watch ends, *"start it again
+with the same command"*. Followed, that loses the line every 30 minutes and restores it only if the
+agent notices, and each restart is a turn. The section's opening also promised that *"a frame arriving
+is the only thing that should cost you a turn"*, which the capped watch makes untrue.
+
+**The fix.** Same shape as the README's (`R2-10`): under Claude Code the feed runs as a background
+task writing to a log, which is not capped; an optional `tail -n 0 -F` watcher wakes the agent on
+frames at the price of one turn per expiry, and the doc says to keep it armed only if whoever runs the
+agent wants it reachable live. For other harnesses it now says what to find out: whether a watch can
+expire, and whether the process under it dies when it does.
+
+**What the walk corrected.** The first draft ended *"if your lane ever reads GONE, the process holding
+it died"*. GONE means no feed for 90 seconds, and a network drop does that too; the feed reconnects by
+itself every 2 seconds (`teamline_feed.py`). Only a lane that **stays** GONE points at a dead process,
+and the shipped sentence says so.
+
+**No test, this is prose** (as `R2-8`, `R2-10`).
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
@@ -3019,7 +3045,7 @@ and the open ones live in somebody's memory until they do not.
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
 | 165 of the 244 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
-| **`docs/ONBOARDING.md` and `teamline_feed.py`'s docstring still say to hold the feed inside a `Monitor(...)`** — the advice `R2-10` removed from the README. On Claude Code that loses the line every 30 minutes. | open |
+| **`teamline_feed.py`'s docstring still says to run it under `Monitor(...)`** — the advice `R2-10` removed from the README and `R2-12` from `ONBOARDING.md`. On Claude Code that loses the line every 30 minutes. | open |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

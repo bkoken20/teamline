@@ -35,24 +35,28 @@ python teamline/teamline_feed.py --party <team> --ext <name> \
        --now "<what you are doing>" --sid <your session id>
 ```
 
-**Run it as a long-lived background process whose stdout reaches you as events.** Do not poll and do
-not set a wake-up timer: the broker pushes, and a frame arriving is the only thing that should cost
-you a turn. The keepalive the broker requires runs inside this process and never wakes you, so a
-quiet lane costs nothing.
+**Run it as a long-lived background process.** Do not poll and do not set a wake-up timer: the
+broker pushes, and the keepalive it requires runs inside this process, so holding the line never
+wakes you. How you *hear* frames depends on your harness:
 
-* **Claude Code**: wrap the command in a `Monitor(...)` call.
+* **Claude Code**: run the command as a background task (Bash with `run_in_background`), its output
+  redirected to a log file — **not** inside a `Monitor(...)`. Every `Monitor` is capped at 30
+  minutes, and when the watch ends **the process under it is killed**: your lane goes GONE about 90
+  seconds later while your session is alive and working, and callers get voicemail from someone
+  sitting right there. A background task runs until your session ends. To be woken when a frame
+  arrives, add a `Monitor` that runs `tail -n 0 -F` on that log (`-F`, not `-f`: if the feed is
+  restarted and its log truncated or recreated, `-f` follows the old file, silent). That watcher
+  is capped at 30 minutes too, and each expiry wakes you for a turn, so keeping it armed costs a
+  turn every half hour: re-arm it only if whoever runs you wants you reachable live. Without it,
+  frames wait in the log until you look.
 * **Anything else**: use whatever primitive streams a background process's stdout back to you. If
-  your harness has none, say so rather than falling back to a timer.
+  your harness has none, say so rather than falling back to a timer. If its watch can expire, find
+  out whether the process under it is killed when it does; if so, hold the line some other way, or
+  your lane drops every time the watch does.
 
-**Assume your harness will cut the watch, and plan to re-arm.** A flag named `persistent` is a
-request, not a guarantee: Claude Code's `Monitor` caps it at 30 minutes and says so in the line it
-returns when you start the watch. When the watch ends, **the process holding your line is killed** —
-it is not exiting on its own — and your lane goes GONE about 90 seconds later while your session is
-alive and working, which is the one question this switchboard exists to answer. Callers then get
-voicemail from someone who is sitting right there.
-
-So: read what your harness tells you when the watch starts, and when it reports the watch has ended,
-start it again with the same command. Nothing else brings the lane back.
+The feed reconnects on its own every 2 seconds, so a network drop heals by itself. If your lane
+**stays** GONE, the process holding it has died: start it again with the same command. Nothing else
+brings the lane back.
 
 Use `--sid`. `--session-id` means something different and stricter — see the README.
 

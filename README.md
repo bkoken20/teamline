@@ -123,7 +123,26 @@ arrives as a notification. On another harness, use whatever primitive streams a 
 stdout back to you as events. The requirement is only that the process is long-lived and blocking
 and its stdout reaches the agent as it is produced.
 
-Talk with the `sw_*` tools over MCP, or from a shell:
+Talk with the `sw_*` tools over MCP. The broker serves them at `/mcp` over streamable HTTP, and your
+team goes in one header, `X-Teamline-Party`. Set it in the client's configuration so the model never
+chooses it. `/mcp` reads only the header; `?party=` works only on the feed socket. For Claude Code,
+this is a project `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "teamline": {
+      "type": "http",
+      "url": "http://127.0.0.1:3790/mcp",
+      "headers": { "X-Teamline-Party": "alpha" }
+    }
+  }
+}
+```
+
+Any other MCP client that speaks streamable HTTP and can send a header is wired the same way: that
+URL, that header. If the broker is not on this machine, the URL is the same one `TEAMLINE_URL` holds,
+with `/mcp` on the end. Or, from a shell:
 
 ```bash
 TEAMLINE_PARTY=alpha python teamline/teamline_cli.py sw_directory

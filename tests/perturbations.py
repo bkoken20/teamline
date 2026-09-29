@@ -216,6 +216,14 @@ PERTURBATIONS = [
              "naming neither the address dialled nor the variable that moves it. It is the first "
              "command the README tells a reader to type"),
 
+    dict(id="B-L2", suite="e2e", file="README.md",
+         find='"headers": { "X-Teamline-Party": "alpha" }',
+         repl='"headers": { "X-Teamline-Team": "alpha" }',
+         must_fail="...and that exact config connects: its path and header reach the broker and sw_directory answers",
+         why="gives the README's MCP client config a plausible but wrong header name. The snippet "
+             "still parses and still looks right to a reader; the broker then sees no team and "
+             "refuses every tool. Only a check that USES the snippet can see that"),
+
     dict(id="R2-6", suite="e2e", file="tests/test_switchboard_e2e.py",
          # Targets the SUITE, not this file. A claim whose find text lives in perturbations.py
          # quotes itself: the text then occurs twice and the runner refuses it as ambiguous, which

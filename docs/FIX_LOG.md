@@ -2869,6 +2869,39 @@ and it already does: the hygiene rules in PROTOCOL 3 and the GONE timing they sp
 
 ---
 
+## B-L2 — the README never showed how to connect an MCP client
+
+**Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
+sentence that introduced them said *"Talk with the `sw_*` tools over MCP"* and moved on to the shell
+client. Nothing said where the endpoint is (`/mcp`), which transport it speaks (streamable HTTP), or
+that the team travels in one header, `X-Teamline-Party`, which the client's configuration must set.
+The header name appeared once, in the security section, as a thing to worry about rather than a
+thing to configure.
+
+**On the numbering.** The maintainer's working notes record a finding, called `B6` there, with this
+content. As with `B-L1`, nothing in this repository can show that it is the original queue's `B6`,
+so it is numbered `-L` and the queue's figures above are unchanged by it.
+
+**What was wrong, precisely, and what the code does.** `/mcp` takes the team from the header only:
+`team_of()` in `switchboard_broker.py` reads `X-Teamline-Party` and nothing else. `?party=` works on
+the feed socket (`/ws`) and not on `/mcp` — so a reader guessing from the feed's URL would have
+guessed wrong, and the broker would have refused every tool with a message they had no way to act on.
+
+**The fix.** The README now shows a working Claude Code `.mcp.json` (the same shape the maintainer's
+own sessions run on), states that `/mcp` reads the header only, and says how any other MCP client
+that speaks streamable HTTP and can send a header is wired: that URL, that header, with
+`TEAMLINE_URL`'s value plus `/mcp` when the broker is elsewhere.
+
+**The check uses the snippet rather than reading it.** A check that grepped the README for
+"X-Teamline-Party" would pass while the snippet carried a wrong path or a misspelt header — the
+habit removed under `R-30`. So the end-to-end suite parses the first JSON block carrying
+`mcpServers` out of the README, points a real MCP client at the test broker with exactly that path
+and those headers, and requires `sw_directory` to answer. Red before the fix (no block), green
+after. Perturbation `B-L2` changes the header name in the README to a plausible wrong one; the
+snippet still parses and still reads correctly, and the check goes red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -2878,7 +2911,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 158 of the 235 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 160 of the 238 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |
@@ -2893,7 +2926,7 @@ one of the two used to say 15, counting a `-L` entry, which this log elsewhere c
 thing on purpose. The remaining 29 were recorded **outside the repository**, in the working session that ran
 the review, and did not survive a move between machines. Their content is currently unknown.
 
-The five entries numbered with an `-L` suffix are therefore a different thing from the rest, and are
+The six entries numbered with an `-L` suffix are therefore a different thing from the rest, and are
 marked so deliberately: they were re-derived by inspecting the repository rather than taken from that
 list, and whether any of them corresponds to one of the 29 is unknown. They are not that list
 recovered.

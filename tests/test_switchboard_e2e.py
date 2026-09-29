@@ -1152,6 +1152,41 @@ async def run(tmp):
     ck("every environment variable the package reads is documented in the README",
        all(v in _readme for v in _env), sorted(v for v in _env if v not in _readme))
 
+    # ---- the README must show how to connect an MCP client, and what it shows must WORK ----------
+    # B6: the headline feature is the sw_* tools, and the README said "talk with the sw_* tools over
+    # MCP" without ever showing a client config -- where the endpoint is, that the team goes in a
+    # header, which header. Not a grep for words: the config block is parsed out of the README and
+    # USED, against this test broker, so a wrong path or a wrong header name goes red.
+    _b6cfg = None
+    for _blk in _re0.findall(r"```json\n(.*?)```", _readme, _re0.S):
+        try:
+            _j = json.loads(_blk)
+        except ValueError:
+            continue
+        if isinstance(_j, dict) and isinstance(_j.get("mcpServers"), dict) and _j["mcpServers"]:
+            _b6cfg = next(iter(_j["mcpServers"].values()))
+            break
+    ck("the README shows an MCP client config (B6: no 'how do I connect a client' anywhere)",
+       isinstance(_b6cfg, dict) and "url" in _b6cfg, _b6cfg)
+    _b6res = None
+    if isinstance(_b6cfg, dict) and "url" in _b6cfg:
+        _m = _re0.match(r"https?://([^/:]+):(\d+)(/.*)$", _b6cfg["url"])
+        ck("...pointing at the default client address (TEAMLINE_URL's default, http://127.0.0.1:3790)",
+           bool(_m) and _m.group(1) == "127.0.0.1" and _m.group(2) == "3790", _b6cfg["url"])
+        if _m:
+            _b6url = "http://127.0.0.1:%d%s" % (PORT, _m.group(3))     # same path, this test's port
+            try:
+                async with httpx2.AsyncClient(headers=_b6cfg.get("headers") or {},
+                                              timeout=httpx2.Timeout(30.0, read=130.0)) as _hc:
+                    async with Client(streamable_http_client(_b6url, http_client=_hc)) as _s:
+                        _r = await _s.call_tool("sw_directory", {})
+                        _t = "".join(c.text for c in _r.content if getattr(c, "text", None))
+                        _b6res = json.loads(_t) if _t.startswith("{") else _t
+            except BaseException as _e:                                   # noqa: BLE001 -- reported
+                _b6res = "%s: %s" % (type(_e).__name__, _e)
+    ck("...and that exact config connects: its path and header reach the broker and sw_directory answers",
+       isinstance(_b6res, dict) and "extensions" in _b6res and "error" not in _b6res, str(_b6res)[:300])
+
     # ---- what the server TELLS an agent must match what the system does --------------------------
     # The MCP `instructions` string is the first thing a connecting client shows its agent, before
     # any documentation and before any tool call. It said "sw_register first", while the README and

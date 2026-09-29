@@ -24,10 +24,11 @@ USAGE = """teamline_cli.py -- call a switchboard tool from a shell.
   python teamline_cli.py <tool> [json-args]
 
   python teamline_cli.py sw_directory
-  python teamline_cli.py sw_register '{"ext": "docs-writer", "now": "writing the parser docs"}'
   python teamline_cli.py sw_call '{"ext": "docs-writer", "peer": "beta/deep", "subject": "s", "opening": "o"}'
 
-Run sw_directory first and copy peer names from it. The team comes from TEAMLINE_PARTY (currently
+There is no register call to make here: your lane exists while a feed holds it (teamline_feed.py
+--ext docs-writer ...), and holding it IS the registration. Run sw_directory first and copy peer
+names from it. The team comes from TEAMLINE_PARTY (currently
 %s) and the broker from TEAMLINE_URL (currently %s). The full tool list is whatever the broker
 serves: docs/PROTOCOL.md section 7."""
 

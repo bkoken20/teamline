@@ -216,6 +216,15 @@ PERTURBATIONS = [
              "naming neither the address dialled nor the variable that moves it. It is the first "
              "command the README tells a reader to type"),
 
+    dict(id="R2-15", suite="e2e", file="teamline/teamline_cli.py",
+         find="  python teamline_cli.py sw_directory",
+         repl="  python teamline_cli.py sw_directory\n"
+              "  python teamline_cli.py sw_register '{\"ext\": \"docs-writer\", \"now\": \"writing the parser docs\"}'\n",
+         must_fail="every example the CLI's usage prints is accepted by a real broker",
+         why="puts the sw_register example back into the usage text. The broker refuses it -- a lane "
+             "with no feed must give a session id -- and a lane registered that way would be "
+             "UNREACHABLE anyway"),
+
     dict(id="R2-9", suite="e2e", file="teamline/teamline_cli.py",
          find="        if isinstance(hit, (httpx2.ReadTimeout, httpx2.WriteTimeout, httpx2.ReadError,",
          repl="        if False and isinstance(hit, (httpx2.ReadTimeout, httpx2.WriteTimeout, httpx2.ReadError,",

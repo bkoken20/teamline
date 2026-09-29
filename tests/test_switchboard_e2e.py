@@ -1136,6 +1136,35 @@ async def run(tmp):
     ck("...naming the URL it tried and the variable that moves it, as the feed client does",
        "127.0.0.1:3999" in _cout and "TEAMLINE_URL" in _cout, _cout[-200:])
 
+    # ---- every example the CLI's usage prints must be accepted by a real broker ------------------
+    # The usage showed `sw_register '{"ext": ..., "now": ...}'` -- which the broker REFUSES (a lane
+    # with no feed must give a session id), and a lane registered without a feed is UNREACHABLE
+    # anyway. The sw_call example after it then failed too, its own lane never having existed. So
+    # each example is RUN, as printed, in order, against this test broker. The one error tolerated
+    # is the unknown-NAME refusal ("never type one from memory"): examples carry placeholder names,
+    # and the reader fixes that by copying a name from sw_directory, as the usage tells them to.
+    def _usage_examples():
+        u = subprocess.run([sys.executable, os.path.join(PKG, "teamline_cli.py")], capture_output=True,
+                           text=True, encoding="utf-8", timeout=30).stderr
+        out = []
+        for line in u.splitlines():
+            line = line.strip()
+            if line.startswith("python teamline_cli.py sw_"):
+                parts = line.split(" ", 3)
+                argv = [sys.executable, os.path.join(PKG, "teamline_cli.py"), parts[2]]
+                if len(parts) > 3:
+                    argv.append(parts[3].strip("'"))
+                r = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8", timeout=60,
+                                   env=dict(os.environ, TEAMLINE_URL="http://127.0.0.1:%d" % PORT,
+                                            TEAMLINE_PARTY="alpha"))
+                out.append((line, r.returncode, (r.stdout or r.stderr).strip()))
+        return out
+    _ex = await asyncio.to_thread(_usage_examples)
+    _bad = [(l, rc, o[:160]) for l, rc, o in _ex
+            if rc != 0 or ('"error"' in o and "never type one from memory" not in o)]
+    ck("every example the CLI's usage prints is accepted by a real broker (sw_register was refused)",
+       bool(_ex) and not _bad, dict(examples=len(_ex), refused=_bad))
+
     # ---- ...but a broker that ACCEPTED the connection is not "unreachable" ----------------------
     # The R2-7 classifier treated every transport error alike, so a broker that accepted the
     # connection and then timed out or hung up was reported "Nothing is answering there. Check ...

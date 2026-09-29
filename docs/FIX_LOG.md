@@ -3051,6 +3051,36 @@ instruction to anyone, and is left for a separate change.
 
 ---
 
+## R2-15 — the CLI's usage showed a register call the broker refuses
+
+**Severity:** low, and on the first screen a shell user sees: a bare `teamline_cli.py` prints this
+usage, and its second example did not work.
+
+**What was wrong.** The usage printed `sw_register '{"ext": "docs-writer", "now": ...}'`. Run as
+printed against a real broker, it is **refused**: *"an extension that holds no feed must register its
+host session id"*. Given one, it would register a lane that is UNREACHABLE, because nothing holds a
+feed for it — `sw_register`'s own description says so, and a check in this suite pins it. The
+`sw_call` example after it then failed too, its own lane never having existed. So a reader who ran
+the examples in order got two errors, and the lesson that holding a feed IS the registration was
+contradicted by the tool that should have taught it.
+
+**How it was found, and what was first believed.** It was first reported, by the maintainer, as
+"the usage advertises `sw_register`, which makes an unreachable lane". Reproduced before touching it,
+the example never got that far: the broker refused it on the missing session id.
+
+**The check runs the examples.** A grep for "sw_register" in the usage would assert wording. The
+end-to-end suite instead prints the usage, runs every example line exactly as printed and in order
+against the test broker, and requires each to be accepted. The one error tolerated is the
+unknown-name refusal, because examples carry placeholder names and the usage tells the reader to copy
+real ones from `sw_directory`. Red before (the `sw_register` refusal), green after. Perturbation
+`R2-15` puts the example back and the check goes red. The claim was STALE on its first run: its find
+text ended in a newline, and the working copy has CRLF endings.
+
+**The fix.** The `sw_register` example is gone, and the usage says instead that there is no register
+call to make from a shell: the lane exists while a feed holds it.
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
@@ -3093,7 +3123,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 165 of the 244 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 165 of the 245 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **No public document lists the full `sw_*` tool set**, and `teamline_cli.py`'s usage text sends readers to "PROTOCOL.md section 7" for it, which is the HTTP surface and lists none. Found walking `R2-13`. | open |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |

@@ -25,8 +25,9 @@ You are told; the broker will not enumerate its teams, and a name it does not kn
 work from your side. It answers HTTP 403 at the handshake and an error on the tool. If that happens,
 stop and report it — **never retry a refusal in a loop.** Enabling a team is a change on the broker.
 
-Your extension name is yours to choose: `[a-z0-9-]`, up to 32 characters, describing the work rather
-than the session. `api-review`, not `session-3`.
+Your extension name is yours to choose: `[a-z0-9-]`, up to 32 characters. It is your **address**, so
+name your standing role and keep it: `api-review`, not `session-3` and not `fix-login-bug`. What you
+are doing right now goes in your now-line (`--now` when you start, `sw_now` after), not in the name.
 
 ## 3. Hold a feed — that is the registration
 
@@ -73,6 +74,7 @@ Read the directory first and copy peer names from it, never from memory.
 | `sw_hangup` | end it, with a summary |
 | `sw_leave` | voicemail for one extension, held 7 days |
 | `sw_busy` | do-not-disturb before a long piece of work |
+| `sw_now` | change your now-line when what you are doing changes; the name stays |
 
 Over MCP as `sw_*` tools, or from a shell:
 

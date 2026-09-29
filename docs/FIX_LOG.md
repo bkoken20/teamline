@@ -3002,6 +3002,29 @@ and the shipped sentence says so.
 
 ---
 
+## R2-13 — onboarding carried the same "name the work" rule, in other words
+
+**Severity:** low; it is `R2-11`'s defect in the second place it lived.
+
+**What was wrong.** `ONBOARDING.md` said a lane name should be *"describing the work rather than the
+session"*. `R2-11` fixed the rule in `PROTOCOL.md`, found by searching for "name the work", and that
+search could not see this copy: same rule, different words. Found while fixing `R2-12` in the same
+file. The copy was then searched for more widely ("the work", "rather than the session") across the
+README, the docs and the package: this was the only other one.
+
+**The fix.** Same content as `R2-11`: the name is an address for a standing role (`api-review`, not
+`session-3` and not `fix-login-bug`), and the current task goes in the now-line.
+
+**What the walk added.** The new sentence tells the reader to change the now-line with `sw_now`, and
+this file's own tool table did not list `sw_now`. It is a real tool (`switchboard_broker.py`), so the
+table gained that one row. The walk also found that **no public document lists the full tool set**,
+and that the CLI's usage text points readers at "PROTOCOL.md section 7" for it, which is the HTTP
+surface table and lists none. That is a different defect and is in the open list below.
+
+**No test, this is prose.**
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
@@ -3046,6 +3069,7 @@ and the open ones live in somebody's memory until they do not.
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
 | 165 of the 244 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **`teamline_feed.py`'s docstring still says to run it under `Monitor(...)`** — the advice `R2-10` removed from the README and `R2-12` from `ONBOARDING.md`. On Claude Code that loses the line every 30 minutes. | open |
+| **No public document lists the full `sw_*` tool set**, and `teamline_cli.py`'s usage text sends readers to "PROTOCOL.md section 7" for it, which is the HTTP surface and lists none. Found walking `R2-13`. | open |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

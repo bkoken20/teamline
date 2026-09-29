@@ -1136,6 +1136,65 @@ async def run(tmp):
     ck("...naming the URL it tried and the variable that moves it, as the feed client does",
        "127.0.0.1:3999" in _cout and "TEAMLINE_URL" in _cout, _cout[-200:])
 
+    # ---- ...but a broker that ACCEPTED the connection is not "unreachable" ----------------------
+    # The R2-7 classifier treated every transport error alike, so a broker that accepted the
+    # connection and then timed out or hung up was reported "Nothing is answering there. Check ...
+    # TEAMLINE_URL" -- sending the reader to check an address that was right. Two real servers: one
+    # that never answers (the CLI's 130 s read timeout cut to 1 s by a wrapper that swaps in a
+    # Timeout SUBCLASS -- mcp uses httpx2.Timeout in a type annotation, so a function breaks the
+    # import) and one that reads the request and hangs up.
+    import socket as _sk
+    import threading as _th
+    def _serve_bad(mode):
+        srv = _sk.socket(); srv.bind(("127.0.0.1", 0)); srv.listen(5)
+        held = []
+        def loop():
+            while True:
+                try:
+                    c, _ = srv.accept()
+                except OSError:
+                    return
+                if mode == "silent":
+                    held.append(c)
+                else:
+                    c.recv(65536); c.close()
+        _th.Thread(target=loop, daemon=True).start()
+        return srv
+    _wrap = os.path.join(tmp, "cli_short_read.py")
+    with io.open(_wrap, "w", encoding="utf-8") as _f:
+        _f.write("import runpy, sys, httpx2\n_real = httpx2.Timeout\n"
+                 "class _Short(_real):\n    def __init__(self, *a, **k):\n        _real.__init__(self, 5, read=1)\n"
+                 "httpx2.Timeout = _Short\ncli = sys.argv[1]\nsys.argv = [cli] + sys.argv[2:]\n"
+                 "runpy.run_path(cli, run_name='__main__')\n")
+    async def _against(mode):
+        srv = _serve_bad(mode)
+        u = "http://127.0.0.1:%d" % srv.getsockname()[1]
+        def go():
+            return subprocess.run([sys.executable, _wrap, os.path.join(PKG, "teamline_cli.py"), "sw_directory"],
+                                  capture_output=True, text=True, encoding="utf-8", timeout=60,
+                                  env=dict(os.environ, TEAMLINE_URL=u, TEAMLINE_PARTY="alpha"))
+        r = await asyncio.to_thread(go)
+        srv.close()
+        return u, r
+    # Names are literal, not built with %: a perturbation claim must name a check a reader can find
+    # in this file, and the census of claimed checks reads only literal names (R2-6).
+    # "accepted the connection", not "connected": the hang-up's own library text says
+    # "Server disconnected ...", and a bare "connected" matched it on the UNFIXED code.
+    _su, _sb = await _against("silent")
+    ck("[silent] a broker that ACCEPTED the connection is not reported as unreachable",
+       "cannot reach" not in _sb.stderr and "Nothing is answering" not in _sb.stderr, _sb.stderr[-300:])
+    ck("[silent] ...it says the connection was accepted and the exchange failed, with the URL",
+       "accepted the connection" in _sb.stderr and _su in _sb.stderr, _sb.stderr[-300:])
+    ck("[silent] ...briefly: exit 3, no traceback",
+       _sb.returncode == 3 and "Traceback" not in _sb.stderr, (_sb.returncode, _sb.stderr[-200:]))
+    _hu, _hb = await _against("hangup")
+    ck("[hangup] a broker that ACCEPTED the connection is not reported as unreachable",
+       "cannot reach" not in _hb.stderr and "Nothing is answering" not in _hb.stderr, _hb.stderr[-300:])
+    ck("[hangup] ...it says the connection was accepted and the exchange failed, with the URL",
+       "accepted the connection" in _hb.stderr and _hu in _hb.stderr, _hb.stderr[-300:])
+    ck("[hangup] ...briefly: exit 3, no traceback",
+       _hb.returncode == 3 and "Traceback" not in _hb.stderr, (_hb.returncode, _hb.stderr[-200:]))
+
     ck("an unreachable broker is reported with the URL the client actually tried",
        "127.0.0.1:3999" in _out, _out[:200])
     ck("...and with the knob that changes it, so the cause is findable",

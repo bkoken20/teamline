@@ -216,6 +216,14 @@ PERTURBATIONS = [
              "naming neither the address dialled nor the variable that moves it. It is the first "
              "command the README tells a reader to type"),
 
+    dict(id="R2-9", suite="e2e", file="teamline/teamline_cli.py",
+         find="        if isinstance(hit, (httpx2.ReadTimeout, httpx2.WriteTimeout, httpx2.ReadError,",
+         repl="        if False and isinstance(hit, (httpx2.ReadTimeout, httpx2.WriteTimeout, httpx2.ReadError,",
+         must_fail="[hangup] a broker that ACCEPTED the connection is not reported as unreachable",
+         why="sends every transport error down the 'cannot reach' path again, so a broker that "
+             "accepted the connection and hung up is reported as 'Nothing is answering there' -- "
+             "pointing the reader at an address that was right"),
+
     dict(id="B-L2", suite="e2e", file="README.md",
          find='"headers": { "X-Teamline-Party": "alpha" }',
          repl='"headers": { "X-Teamline-Team": "alpha" }',

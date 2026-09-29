@@ -70,6 +70,21 @@ if __name__ == "__main__":
         hit = _transport(ex)
         if hit is None:
             raise
+        # CONNECTED, THEN FAILED. A broker that accepted the connection and then timed out or hung up
+        # was reported as "Nothing is answering there", sending the reader to check an address that
+        # was right. These are the transport errors httpx2 raises only after the connection is up.
+        # 110 and 130 are read off the code, not chosen here: the broker caps sw_wait at 110 s
+        # (switchboard_broker.py) and call() above reads for 130 s, so a healthy broker always
+        # answers inside this client's patience.
+        if isinstance(hit, (httpx2.ReadTimeout, httpx2.WriteTimeout, httpx2.ReadError,
+                            httpx2.WriteError, httpx2.RemoteProtocolError)):
+            print("the TEAMLINE broker at %s accepted the connection, then the exchange failed -- %s: %s"
+                  % (URL, type(hit).__name__, str(hit)[:120] or "no reply in time"), file=sys.stderr)
+            print("Something is listening there. Either the broker is stuck (even sw_wait returns "
+                  "within 110 s and this client waits 130 s), or TEAMLINE_URL (currently %s) points at "
+                  "something that is not the broker." % (os.environ.get("TEAMLINE_URL") or "unset, so the default"),
+                  file=sys.stderr)
+            raise SystemExit(3)
         # Same two facts the feed client reports, in the same order: what was dialled, what moves it.
         print("cannot reach the TEAMLINE broker at %s -- %s: %s"
               % (URL, type(hit).__name__, str(hit)[:120]), file=sys.stderr)

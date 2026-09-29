@@ -2869,6 +2869,49 @@ and it already does: the hygiene rules in PROTOCOL 3 and the GONE timing they sp
 
 ---
 
+## R2-9 — R2-7's fix told a reader to check an address that was right
+
+**Severity:** low, and it is a fix that was wrong the first time, which is why it is recorded rather
+than folded quietly into `R2-7`.
+
+**What was wrong.** `R2-7` taught the CLI to recognise a transport failure and answer in two lines
+instead of a traceback. It treated every transport error alike. So a broker that **accepted** the
+connection and then timed out, or read the request and hung up, was reported as *"cannot reach the
+TEAMLINE broker ... Nothing is answering there. Check ... TEAMLINE_URL"*. Something *was* answering
+there, and the address was right; the reader was sent to fix the one thing that was not broken. A
+`ReadTimeout` also carries empty text, so the reason printed as nothing at all.
+
+**How it was found.** Not by a review. While porting `R2-7` into another copy of this client, the
+port was attacked with a server that accepts connections and never answers, and the message was
+wrong in exactly this way.
+
+**The fix, and the design it beat.** The obvious narrower fix — catch only connect-phase errors
+and let the rest raise — was rejected: a slow or stuck broker would get the multi-line traceback
+back, for an operational condition, which is the defect `R2-7` removed. Instead the short report
+stays and is split. The errors `httpx2` raises only after a connection is up (`ReadTimeout`,
+`WriteTimeout`, `ReadError`, `WriteError`, `RemoteProtocolError`) now say the connection was
+accepted and the exchange failed, and name the two causes that fit: a stuck broker, or `TEAMLINE_URL`
+pointing at something that is not the broker. A refused port and a host that never answers the
+connection (`ConnectTimeout`) still say "cannot reach". The message cites 110 s and 130 s because
+the code does: the broker caps `sw_wait` at 110 s and the client reads for 130 s, so a healthy broker
+never reaches the timeout. The first draft of that sentence said `sw_wait` "can take up to 130 s";
+walking it against the broker showed the cap is 110, and it was corrected before it shipped.
+
+**The checks.** Two real servers in the end-to-end suite: one that never answers (the client's
+130 s read timeout cut to 1 s by a wrapper that swaps in a `Timeout` subclass — a function breaks
+the `mcp` package's import, which uses the class in a type annotation) and one that reads the
+request and hangs up. Red before the fix, green after. One check passed on the unfixed code for the
+wrong reason: it looked for "connected", and the hang-up's own library text is *"Server
+disconnected ..."*. It was anchored on "accepted the connection" before the fix went in, and then it
+was red. Perturbation `R2-9` disables the new branch; the hang-up check goes red.
+
+The checks were first written in a loop with their names built by `%` formatting. The census
+`R2-6` added then refused the claim: it reads only literal check names, so a claim naming
+`[hangup] ...` pointed at a check no reader could find in the file. That is the census doing its
+job, and the loop was unrolled into six literal names.
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
@@ -2911,7 +2954,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 160 of the 238 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 165 of the 244 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

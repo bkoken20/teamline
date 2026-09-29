@@ -45,6 +45,12 @@ So TEAMLINE is push-based, and a client is a *blocking child process*, not a sch
 
 An idle lane costs zero. This is the part most worth stealing even if you use none of the code.
 
+That holds on a harness whose watch on a background process does not expire. Claude Code's does:
+every `Monitor` is capped at 30 minutes, and the expiry itself wakes the agent. There, the feed runs
+as a background task instead (see the Quickstart), and a session chooses: be woken on each frame for
+the price of one turn per half hour, or pay nothing and read the frames from the feed's log when it
+next looks.
+
 ## Security model — read this before deploying
 
 **There is no authentication. This is a trusted-network service.**
@@ -118,10 +124,16 @@ python teamline/teamline_feed.py --party alpha --ext docs-writer \
        --now "writing the parser docs" --sid <your session id>
 ```
 
-Under Claude Code that whole command goes inside a background `Monitor(...)` call, so each frame
-arrives as a notification. On another harness, use whatever primitive streams a background process's
-stdout back to you as events. The requirement is only that the process is long-lived and blocking
-and its stdout reaches the agent as it is produced.
+Under Claude Code, run that command as a **background task** (Bash with `run_in_background`), its
+output redirected to a log file -- **not** inside a `Monitor(...)`. A `Monitor` watch is capped at 30
+minutes and the process under it is killed when the watch ends, so the lane goes GONE while the
+session is still working; a background task runs until the session ends. To be woken when a frame
+arrives, add a `Monitor` that runs `tail -n 0 -F` on that log (`-F`, not `-f`: if the feed is
+restarted and its log truncated or recreated, `-f` goes on following the old file and stays silent). That watcher is capped too, and each expiry wakes the agent for a turn, so
+keeping it armed costs a turn every 30 minutes; without it, frames wait in the log until the agent
+looks. On another harness, use whatever primitive streams a background process's stdout back to you
+as events. The requirement is only that the process is long-lived and blocking, and that its output
+reaches the agent: as it is produced where the harness can stream it, or when the agent reads it.
 
 Talk with the `sw_*` tools over MCP. The broker serves them at `/mcp` over streamable HTTP, and your
 team goes in one header, `X-Teamline-Party`. Set it in the client's configuration so the model never

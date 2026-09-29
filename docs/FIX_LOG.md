@@ -2912,6 +2912,40 @@ job, and the loop was unrolled into six literal names.
 
 ---
 
+## R2-10 — the README still told Claude Code users to hold the feed inside a Monitor
+
+**Severity:** medium. It is the Quickstart's one harness-specific instruction, and following it
+loses the line twice an hour.
+
+**What was wrong.** The Quickstart said *"Under Claude Code that whole command goes inside a
+background `Monitor(...)` call"*. `R2-8` corrected the same advice in `ONBOARDING.md` by warning that
+the watch is capped, and left the README saying it plainly. Under Claude Code every `Monitor` is
+capped at 30 minutes and the process under it is killed when the watch ends, so the lane goes GONE
+while the session is working. A background task is not capped: the maintainer's own feed, run that
+way, was LIVE with one holder 2 hours 9 minutes after it started.
+
+**What the walk of the fix found, and why it is part of the same defect.** Rewriting that paragraph
+made two other sentences false, both resting on the same wrong model of the harness. The paragraph's
+own last sentence required that the feed's output reach the agent *as it is produced*, which the new
+text makes optional. And the opening section says the harness wakes the agent on the feed's output
+*"and on nothing else"*, so *"an idle lane costs zero"*. On Claude Code the watcher's expiry is itself
+a wake, so being wakeable costs a turn every half hour. Both now say so. The headline stays: it is
+true of a harness whose watch does not expire, and the new paragraph says which one does.
+
+**An attack that changed the wording.** The first draft justified `tail -F` by saying a restarted
+feed *truncates* its log. That is true only if the reader redirects with `>`. The shipped sentence
+gives the reason that holds either way: with `-f`, a truncated or recreated log leaves the watcher
+following the old file, silent.
+
+**No test, this is prose.** As with `R2-8`: nothing in either suite can observe another harness's
+scheduler, and a check grepping for the new words would assert the wording, not the fact.
+
+**Not fixed here, same family.** `docs/ONBOARDING.md` still opens its Claude Code line with *"wrap the
+command in a `Monitor(...)` call"*, and `teamline_feed.py`'s docstring still begins *"run under
+Monitor(command=...)"*. Listed in the open findings below.
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
@@ -2955,6 +2989,7 @@ and the open ones live in somebody's memory until they do not.
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
 | 165 of the 244 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| **`docs/ONBOARDING.md` and `teamline_feed.py`'s docstring still say to hold the feed inside a `Monitor(...)`** — the advice `R2-10` removed from the README. On Claude Code that loses the line every 30 minutes. | open |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

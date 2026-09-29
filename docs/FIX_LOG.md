@@ -3081,6 +3081,32 @@ call to make from a shell: the lane exists while a feed holds it.
 
 ---
 
+## R2-16 — no document listed the tools, and the CLI pointed at a section with none
+
+**Severity:** medium for a first-time reader: the `sw_*` tools are the product, and there was no
+list of them.
+
+**What was wrong.** The broker serves 13 tools. `ONBOARDING.md`'s table carries 8. No other document
+listed them. The CLI's usage told readers that *"the full tool list is whatever the broker serves:
+docs/PROTOCOL.md section 7"*, and section 7 is the HTTP surface table, whose only line about tools is
+*"`/mcp` | the `sw_*` tools"*. Found walking `R2-13`, which had just sent a reader to `sw_now`,
+one of the five missing.
+
+**The fix.** `PROTOCOL.md` section 8 lists all 13 with their arguments and what each does, taken from
+the broker's own tool descriptions; the CLI's usage now points at section 8. The figures in the table
+were walked against the code rather than copied: the now-line cap (`NOW_MAX = 200`), `sw_wait`'s cap
+(`min(..., 110)`), the five busy kinds, and the claim that `sw_log` is the one tool that does not
+consult the team — checked by listing which `sw_*` bodies never call `team_of`: `sw_log` alone.
+
+**The check follows the pointer.** It reads the served tool set from the **running** test broker
+(`list_tools`), not from the source; it reads which section the CLI's usage names; and it requires that
+section's table to list exactly that set, no more and no fewer. So a new tool with no row is red, a row
+for a tool that is gone is red, and a usage pointing at the wrong section is red — which is how it
+failed before the fix: pointer at section 7, all 13 missing. Perturbation `R2-16` drops one row and
+the check goes red.
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
@@ -3123,8 +3149,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 165 of the 245 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
-| **No public document lists the full `sw_*` tool set**, and `teamline_cli.py`'s usage text sends readers to "PROTOCOL.md section 7" for it, which is the HTTP surface and lists none. Found walking `R2-13`. | open |
+| 165 of the 246 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

@@ -216,6 +216,13 @@ PERTURBATIONS = [
              "naming neither the address dialled nor the variable that moves it. It is the first "
              "command the README tells a reader to type"),
 
+    dict(id="R2-16", suite="e2e", file="docs/PROTOCOL.md",
+         find="| `sw_now` | `ext, text` | change your now-line (at most 200 characters) |",
+         repl="",
+         must_fail="the PROTOCOL section the CLI's usage points at lists every tool the broker serves",
+         why="drops one tool from the documented list. Nothing else notices: the broker still serves "
+             "it, and every other row still reads correctly"),
+
     dict(id="R2-15", suite="e2e", file="teamline/teamline_cli.py",
          find="  python teamline_cli.py sw_directory",
          repl="  python teamline_cli.py sw_directory\n"

@@ -30,7 +30,7 @@ There is no register call to make here: your lane exists while a feed holds it (
 --ext docs-writer ...), and holding it IS the registration. Run sw_directory first and copy peer
 names from it. The team comes from TEAMLINE_PARTY (currently
 %s) and the broker from TEAMLINE_URL (currently %s). The full tool list is whatever the broker
-serves: docs/PROTOCOL.md section 7."""
+serves; docs/PROTOCOL.md section 8 lists it."""
 
 if __name__ == "__main__":
     # A traceback is this program failing, not this program telling you how to use it. `sys.argv[1]`

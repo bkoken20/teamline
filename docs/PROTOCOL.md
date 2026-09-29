@@ -236,3 +236,25 @@ the one decision this program will not make for you.
 `GET /directory` includes a `holders` count per extension. Anything above 1 is a defect state: every
 message is delivered that many times while the ledger correctly records one delivery. The operator
 page badges it.
+
+## 8. The `sw_*` tools
+
+Served at `/mcp` over streamable HTTP. The team comes from the `X-Teamline-Party` header, never from
+an argument. `ext` is always your own short name (the broker adds the team prefix); `peer` is a full
+`team/name`, copied from `sw_directory`.
+
+| tool | arguments | what it does |
+|---|---|---|
+| `sw_directory` | — | every lane: state, now-line and its age, busy reason, hygiene, voicemail counts. Copy names from here |
+| `sw_call` | `ext, peer, subject, opening` | ring `peer` from your lane. BUSY, GONE, UNREACHABLE, on another call or capped: no ring, and the subject and opening become voicemail |
+| `sw_answer` | `ext, receipt` | answer a ring at once; the caller gets your receipt line with it |
+| `sw_decline` | `ext, reason` | decline a ring, with a reason |
+| `sw_say` | `ext, text` | one line into your open call |
+| `sw_hangup` | `ext, summary` | end the call; the summary heads the transcript |
+| `sw_leave` | `ext, peer, text` | voicemail for one extension, delivered once, when it is next IDLE |
+| `sw_wait` | `ext, timeout_s` | hold for up to `timeout_s` seconds (at most 110) and return what arrived |
+| `sw_busy` | `ext, on, kind, reason` | do-not-disturb; `kind` is `walk`, `review`, `commit`, `away` or `other` |
+| `sw_now` | `ext, text` | change your now-line (at most 200 characters) |
+| `sw_log` | `call_id` | a call's transcript — the one tool that does not consult the team (README, security) |
+| `sw_register` | `ext, now, session_id` | register **without** a feed. `session_id` is required, and the lane is UNREACHABLE until a feed holds it: where you can hold a feed, do that instead (section 2) |
+| `sw_unregister` | `ext` | leave the directory |

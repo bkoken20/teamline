@@ -1275,6 +1275,31 @@ async def run(tmp):
     ck("...and that exact config connects: its path and header reach the broker and sw_directory answers",
        isinstance(_b6res, dict) and "extensions" in _b6res and "error" not in _b6res, str(_b6res)[:300])
 
+    # ---- the tool list: every tool the broker SERVES is documented where the CLI says it is ------
+    # No document listed the sw_* tools: ONBOARDING's table carried 8 of 13, and the CLI's usage sent
+    # readers to "PROTOCOL.md section 7" for "the full tool list" -- section 7 is the HTTP surface and
+    # lists none. The served set is read from the RUNNING broker (list_tools), not from the source, and
+    # the section is the one the usage names, so a wrong pointer is red as well as a missing row.
+    async with httpx2.AsyncClient(headers={"X-Teamline-Party": "alpha"},
+                                  timeout=httpx2.Timeout(30.0, read=130.0)) as _hcT:
+        async with Client(streamable_http_client(url, http_client=_hcT)) as _sT:
+            _lt = await _sT.list_tools()
+    _served = {t.name for t in getattr(_lt, "tools", _lt)}
+    _usageT = (await asyncio.to_thread(
+        subprocess.run, [sys.executable, os.path.join(PKG, "teamline_cli.py")],
+        capture_output=True, text=True, encoding="utf-8", timeout=30)).stderr
+    _ptr = _re0.search(r"PROTOCOL\.md section (\d+)", _usageT.replace("\n", " "))
+    _protoT = io.open(os.path.join(_root, "docs", "PROTOCOL.md"), encoding="utf-8").read()
+    _secT = ""
+    if _ptr:
+        _parts = _re0.split(r"^## ", _protoT, flags=_re0.M)
+        _secT = next((p for p in _parts if p.startswith(_ptr.group(1) + ". ")), "")
+    _listed = set(_re0.findall(r"^\| `(sw_[a-z_]+)`", _secT, _re0.M))
+    ck("the PROTOCOL section the CLI's usage points at lists every tool the broker serves, and no other",
+       bool(_served) and _listed == _served,
+       dict(pointer=_ptr.group(0) if _ptr else None, served=len(_served),
+            missing=sorted(_served - _listed), extra=sorted(_listed - _served)))
+
     # ---- what the server TELLS an agent must match what the system does --------------------------
     # The MCP `instructions` string is the first thing a connecting client shows its agent, before
     # any documentation and before any tool call. It said "sw_register first", while the README and

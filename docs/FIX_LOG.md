@@ -3025,6 +3025,32 @@ surface table and lists none. That is a different defect and is in the open list
 
 ---
 
+## R2-14 — the feed's own docstring said to run it under a Monitor
+
+**Severity:** low; it is the last copy of the advice `R2-10` and `R2-12` removed, in the first place a
+reader of the code looks.
+
+**What was wrong.** `teamline_feed.py` opened *"TEAMLINE feed client for a Claude session -- run
+under Monitor(command=...)"*, and said each printed line *"becomes a notification in the session"*.
+Under Claude Code a `Monitor` is capped at 30 minutes and kills the process under it, and whether a
+line becomes a notification depends on what streams the output, not on this script. It also named
+one harness in a client that works under any.
+
+**What the walk added.** The docstring ended *"Never raises: a dead feed prints a line and retries"*.
+Not always: a feed the broker **refuses** (team not enabled, or no `--ext`) prints why and exits 3,
+because retrying cannot help — the code says so in the refusal it prints. The docstring now says
+both.
+
+**The fix.** Harness-neutral opening; holding the feed is the registration; under Claude Code, a
+background task writing to a log, not a `Monitor`; frames are heard through whatever streams that
+output (pointing at `ONBOARDING.md` step 3); retries on a drop, exit 3 on a refusal.
+
+**No test, this is prose.** Two code comments (`switchboard.py`, `switchboard_broker.py`) still call
+the non-acking kind of feed a "Claude Monitor" feed. That is a stale *label* for a feed type, not an
+instruction to anyone, and is left for a separate change.
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
@@ -3068,7 +3094,6 @@ and the open ones live in somebody's memory until they do not.
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
 | 165 of the 244 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
-| **`teamline_feed.py`'s docstring still says to run it under `Monitor(...)`** — the advice `R2-10` removed from the README and `R2-12` from `ONBOARDING.md`. On Claude Code that loses the line every 30 minutes. | open |
 | **No public document lists the full `sw_*` tool set**, and `teamline_cli.py`'s usage text sends readers to "PROTOCOL.md section 7" for it, which is the HTTP surface and lists none. Found walking `R2-13`. | open |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |

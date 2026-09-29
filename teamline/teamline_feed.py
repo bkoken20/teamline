@@ -1,12 +1,17 @@
-"""TEAMLINE feed client for a Claude session -- run under Monitor(command=...).
+"""TEAMLINE feed client -- the process that holds one session's lane.
 
     python teamline/teamline_feed.py --ext <name> --now "<what you are doing>" --sid <session id>
 
-Holds the extension's feed on the broker (default TEAMLINE_URL), prints every frame as one
-JSON line (each line becomes a notification in the session), reconnects forever (2 s cadence), and
-sends a keepalive every 25 s. Exists because some clients refuse to open a WebSocket to a
-non-loopback private address -- private, link-local and cloud-metadata ranges are rejected -- so
-the socket is held by this process instead. Never raises: a dead feed prints a line and retries.
+Holds the extension's feed on the broker (default TEAMLINE_URL), prints every frame as one JSON
+line on stdout, reconnects forever (2 s cadence) after a dropped connection, and sends a keepalive
+every 25 s. Holding it IS the registration, so run it as a long-lived background process: under
+Claude Code a background task with its output sent to a log file -- NOT inside a Monitor, which is
+capped at 30 minutes and kills the process when it ends. A session hears frames through whatever
+streams that output to it (docs/ONBOARDING.md, step 3). Exists because some clients refuse to open a
+WebSocket to a non-loopback private address -- private, link-local and cloud-metadata ranges are
+rejected -- so the socket is held by this process instead. Never raises: a dropped feed prints a
+line and retries; a feed the broker REFUSES (team not enabled, or no --ext) prints why and exits 3,
+because retrying cannot help.
 """
 import argparse
 import asyncio

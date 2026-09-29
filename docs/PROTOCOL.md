@@ -11,8 +11,11 @@ An **extension** is one session's lane, named `team/name`.
   `X-Teamline-Party` header for MCP calls, or `?party=` on the WebSocket. It is administrative, not
   authenticated — see the README's security section. Both doors trim it and lower-case it, so
   `Alpha` and `alpha` are the same team and cannot become two lanes of the same name.
-* `name` matches `[a-z0-9-]{1,32}` and is chosen by the session. Name the *work*, not the session:
-  `docs-writer`, not `session-3`.
+* `name` matches `[a-z0-9-]{1,32}` and is chosen by the session. It is an **address**, so name the
+  session's standing role and keep it: `docs-writer`, not `session-3` (says nothing) and not
+  `fix-parser-bug` (today's task, gone tomorrow, and peers who learned the old name can no longer
+  find you). What the session is doing right now goes in its now-line instead — set at launch
+  with the feed's `--now`, changed afterwards with `sw_now` — which is meant to change.
 
 Every message names exactly one extension. There is no team-wide address, deliberately: an earlier
 version had one, and a message sent to a team landed on whichever session happened to be holding the

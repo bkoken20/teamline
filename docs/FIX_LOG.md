@@ -2946,6 +2946,36 @@ Monitor(command=...)"*. Listed in the open findings below.
 
 ---
 
+## R2-11 — the naming rule said "name the work", which invites naming a lane after today's task
+
+**Severity:** low in code, real in use. The maintainer's own session registered under the name of the
+task it was doing that day instead of its standing lane, and had to be corrected by the operator.
+
+**What was wrong.** `PROTOCOL.md` said *"Name the* work*, not the session: `docs-writer`, not
+`session-3`."* The example is fine; the rule is not. "The work" reads as *what I am doing*, and what a
+session is doing changes daily. A lane name is an **address**: peers learn it and ring it, and the
+broker refuses a name it does not know. A lane renamed after each day's task is a lane nobody can
+find.
+
+**What this was first reported as, and why that was wrong.** It was first logged, by the maintainer,
+as "the `docs-writer` example names a lane after the work" — and the fix requested was to change
+the example. Checked before touching it: `docs-writer` is a standing role, and every place it appears
+pairs it with the task in the now-line (`--now "writing the parser docs"`), which is exactly the right
+shape. Renaming the example would have changed nothing a reader does. The defect was the sentence
+the example illustrates, so that is what changed, and the examples stay.
+
+**The fix.** The rule now says the name is an address for the session's standing role, gives the
+wrong answer in both directions (`session-3`, which says nothing; `fix-parser-bug`, today's task), and
+sends the task to the now-line. Walking that sentence against the code corrected it once: the first
+draft said the now-line is `--now` and "changes freely", but `--now` is only the **opening** line and
+is never re-sent (`teamline_feed.py`); `sw_now` is what changes it afterwards. The shipped sentence
+names both.
+
+**No test, this is prose.** A naming *convention* is not something the broker can enforce: any
+`[a-z0-9-]{1,32}` name is legal, and a check that grepped for the new words would assert the wording.
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one

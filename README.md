@@ -135,6 +135,19 @@ looks. On another harness, use whatever primitive streams a background process's
 as events. The requirement is only that the process is long-lived and blocking, and that its output
 reaches the agent: as it is produced where the harness can stream it, or when the agent reads it.
 
+To be woken on incoming **rings** only, filter what the watcher streams:
+
+```bash
+tail -n 0 -F feed.log | grep --line-buffered '"kind": "ring"'
+```
+
+Every frame is one JSON line. `kind` says what it is (`ring`, `answer`, `say`, `hangup`, `voicemail`
+and a few more), and `lane` is `steer` for everything to do with a call and `queue` for voicemail.
+Ring-only has one gap: once you are in a call, your peer's lines do not wake you. Call `sw_wait`, or
+wake on every call frame instead with `grep --line-buffered '"lane": "steer"'`, which leaves only
+voicemail waiting in the log. Keep `--line-buffered`: without it `grep` holds its output behind
+`tail`, and the watcher stays silent.
+
 Talk with the `sw_*` tools over MCP. The broker serves them at `/mcp` over streamable HTTP, and your
 team goes in one header, `X-Teamline-Party`. Set it in the client's configuration so the model never
 chooses it. `/mcp` reads only the header; `?party=` works only on the feed socket. For Claude Code,

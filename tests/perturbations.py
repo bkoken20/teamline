@@ -216,6 +216,20 @@ PERTURBATIONS = [
              "naming neither the address dialled nor the variable that moves it. It is the first "
              "command the README tells a reader to type"),
 
+    dict(id="R2-17-ring", suite="e2e", file="README.md",
+         find='tail -n 0 -F feed.log | grep --line-buffered \'"kind": "ring"\'',
+         repl='tail -n 0 -F feed.log | grep --line-buffered \'"type": "ring"\'',
+         must_fail="the README's ring-only waker filter matches a ring exactly as the feed writes it",
+         why="the label the recipe was first given with. It reads right, it is valid grep, and it "
+             "matches nothing the feed writes: the waker would never fire"),
+
+    dict(id="R2-17-lane", suite="e2e", file="README.md",
+         find='wake on every call frame instead with `grep --line-buffered \'"lane": "steer"\'`',
+         repl='wake on every call frame instead with `grep --line-buffered \'"lane": "queue"\'`',
+         must_fail="the README's in-call waker filter wakes on every call frame the broker emits",
+         why="points the in-call filter at the voicemail lane: it would wake on voicemail and on no "
+             "call frame at all"),
+
     dict(id="R2-16", suite="e2e", file="docs/PROTOCOL.md",
          find="| `sw_now` | `ext, text` | change your now-line (at most 200 characters) |",
          repl="",

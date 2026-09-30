@@ -3107,6 +3107,38 @@ the check goes red.
 
 ---
 
+## R2-17 — waking on rings only: the recipe, and the two wrong versions that came first
+
+**Severity:** none shipped; both wrong versions were caught before they reached this repository. It
+is recorded because it is exactly the kind of error this log exists to show, and because one of the
+two was caught by someone other than the maintainer.
+
+**What was added.** The README and `ONBOARDING.md` said how to be woken on every frame. They now also
+say how to be woken on incoming **rings** only — `tail -n 0 -F feed.log | grep --line-buffered
+'"kind": "ring"'` — and what that misses: once in a call, a peer's lines do not wake you.
+
+**Wrong version one: the label.** The maintainer first gave the filter as `'"type": "ring"'`. Another
+session tested it against its real feed log before using it: `"kind"` matched the three rings in it,
+`"type"` matched none. The frame's type lives in `kind`; `type` is used only by the feed's own status
+lines (`registered`, `feed_down`, ...). A filter with the wrong label is valid `grep`, reads correctly,
+and never fires, so the waker it builds is silent for ever while the lane reads LIVE.
+
+**Wrong version two: the widened filter.** For a session in a call, the maintainer then gave
+`grep -E '"kind": "(ring|say|hangup)"'`. Listing every `_emit` in `switchboard.py` shows eleven
+kinds, and that filter misses `peer_lost` and `nudge` inside a call, and `answer` and `decline` for a
+caller. The same listing shows the complete filter: every call frame is sent on the `steer` lane and
+voicemail alone on `queue` (counted in the real logs too: 53 call frames all `steer`, 13 voicemails all
+`queue`). So the in-call filter is `'"lane": "steer"'`.
+
+**The checks.** The end-to-end suite takes both filters **out of the README** and applies them to
+frames built with the broker's field names and lane constants and printed the way the feed prints
+them. The ring filter must match `ring` and nothing else; the lane filter must match every call kind
+and not voicemail. Red before (no filter; then no lane filter), green after. Perturbations
+`R2-17-ring` (the `"type"` label) and `R2-17-lane` (the `queue` lane) both go red. The suite reads the
+patterns with Python, not `bash`, so it does not depend on a shell the reader may not have.
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one
@@ -3149,7 +3181,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 165 of the 246 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 165 of the 248 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

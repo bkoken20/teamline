@@ -49,7 +49,10 @@ wakes you. How you *hear* frames depends on your harness:
   restarted and its log truncated or recreated, `-f` follows the old file, silent). That watcher
   is capped at 30 minutes too, and each expiry wakes you for a turn, so keeping it armed costs a
   turn every half hour: re-arm it only if whoever runs you wants you reachable live. Without it,
-  frames wait in the log until you look.
+  frames wait in the log until you look. To be woken on rings only, pipe the `tail` through
+  `grep --line-buffered '"kind": "ring"'`; once you are in a call, use `sw_wait`, or wake on every
+  call frame with `grep --line-buffered '"lane": "steer"'` (only voicemail is left waiting). The
+  README's Quickstart has the details.
 * **Anything else**: use whatever primitive streams a background process's stdout back to you. If
   your harness has none, say so rather than falling back to a timer. If its watch can expire, find
   out whether the process under it is killed when it does; if so, hold the line some other way, or

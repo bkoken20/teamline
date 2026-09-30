@@ -1275,6 +1275,36 @@ async def run(tmp):
     ck("...and that exact config connects: its path and header reach the broker and sw_directory answers",
        isinstance(_b6res, dict) and "extensions" in _b6res and "error" not in _b6res, str(_b6res)[:300])
 
+    # ---- the README's ring-only waker filter must match a ring as the feed writes it -------------
+    # A recipe for this filter was first given with '"type": "ring"' and would never have fired: the
+    # frame's type is in `kind`. So the pattern is taken from the README and applied to frames built
+    # the way the broker builds them (switchboard.py: id, to, kind, lane, call_id, text) and printed
+    # the way teamline_feed.py prints them (json.dumps, default separators). Read with Python, not
+    # bash, so the suite does not need a shell it may not have.
+    _rw = [l.strip() for l in _readme.splitlines()
+           if l.strip().startswith("tail -n 0 -F") and "grep --line-buffered" in l]
+    _rpat = _re0.search(r"grep --line-buffered '([^']+)'", _rw[0]) if _rw else None
+    import switchboard as _SBw
+    # Every kind the broker emits, on the lane it emits it on: voicemail is QUEUE, all call traffic STEER.
+    _kinds = {"ring": _SBw.STEER, "answer": _SBw.STEER, "decline": _SBw.STEER, "ring_timeout": _SBw.STEER,
+              "peer_lost": _SBw.STEER, "call_expired": _SBw.STEER, "nudge": _SBw.STEER, "say": _SBw.STEER,
+              "hangup": _SBw.STEER, "ring_delivered": _SBw.STEER, "voicemail": _SBw.QUEUE}
+    _fr = {k: json.dumps(dict(id="m1", to="alpha/x", kind=k, lane=ln, call_id="c1",
+                              text="TEAMLINE %s" % k), ensure_ascii=False)
+           for k, ln in _kinds.items()}
+    _rhit = sorted(k for k, line in _fr.items() if _rpat and _rpat.group(1) in line)
+    ck("the README's ring-only waker filter matches a ring exactly as the feed writes it, and nothing else",
+       _rhit == ["ring"], dict(line=_rw[:1], pattern=_rpat.group(1) if _rpat else None, matched=_rhit))
+    # The widened filter for a session IN a call: a first draft said '"kind": "(ring|say|hangup)"',
+    # which misses peer_lost and nudge in a call, and answer/decline for a caller. Every call frame is
+    # on the STEER lane and voicemail alone on QUEUE, so the lane is the complete filter.
+    _wpat = _re0.search(r"`grep --line-buffered '(\"lane\": \"[a-z]+\")'`", _readme)
+    _whit = sorted(k for k, line in _fr.items() if _wpat and _wpat.group(1) in line)
+    ck("the README's in-call waker filter wakes on every call frame the broker emits, and not on voicemail",
+       _whit == sorted(k for k in _kinds if k != "voicemail"),
+       dict(pattern=_wpat.group(1) if _wpat else None, missed=sorted(set(_kinds) - set(_whit) - {"voicemail"}),
+            extra=sorted(set(_whit) & {"voicemail"})))
+
     # ---- the tool list: every tool the broker SERVES is documented where the CLI says it is ------
     # No document listed the sw_* tools: ONBOARDING's table carried 8 of 13, and the CLI's usage sent
     # readers to "PROTOCOL.md section 7" for "the full tool list" -- section 7 is the HTTP surface and

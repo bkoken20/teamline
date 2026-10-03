@@ -3139,6 +3139,35 @@ patterns with Python, not `bash`, so it does not depend on a shell the reader ma
 
 ---
 
+## R2-18 — the README said a background task runs until the session ends, and on current builds it does not
+
+**Severity:** medium. It is the sentence that tells a Claude Code user where to hold the feed, and following it
+on an affected build loses the line every 30 minutes.
+
+**What was wrong.** `R2-10` wrote, and `R2-12` repeated in `ONBOARDING.md`, that *"a background task runs until
+the session ends"*. That rested on one measurement taken on 2026-09-29: a feed run as a background task was LIVE
+with one holder 2 hours 9 minutes after it started. The measurement was true of that build and was written as a
+fact about the product. Claude Code **2.1.286** added a time limit to background commands (their `timeout`
+with `run_in_background`, 30 minutes by default, 2 hours at most), and on **2026-10-03**, on 2.1.287, the broker's
+ledger shows two feeds stopped at exactly **30.0 minutes** each, where the day before, on the older build,
+holders had lived between 90 and 677 minutes.
+
+**What a reader would have done.** Followed the README, lost the lane 30 minutes later, and gone looking for a
+defect in the feed, because the document said a background task cannot be the cause. The lane reads GONE about
+90 seconds after the task is stopped, while the session is alive and working: the single question this
+switchboard exists to answer, answered wrongly.
+
+**The fix says what depends on what.** The sentence now says the limit depends on the build. It gives the
+two facts that are Claude Code's own and says so (the changelog: 2.1.286 added the limit, 2.1.288 applies it
+only to unattended sessions), the one fact that is this project's measurement (30.0 minutes on 2.1.287), and
+what to do on a build that stops it. `R2-10` and `R2-12` stay as written: they record what was measured and
+believed on 2026-09-29, and this entry is the correction.
+
+**No test, this is prose.** Nothing in either suite can observe another product's scheduler, and a check
+grepping for the new words would assert the wording and not the fact (the habit removed under `R-30`).
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one

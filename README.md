@@ -127,7 +127,11 @@ python teamline/teamline_feed.py --party alpha --ext docs-writer \
 Under Claude Code, run that command as a **background task** (Bash with `run_in_background`), its
 output redirected to a log file -- **not** inside a `Monitor(...)`. A `Monitor` watch is capped at 30
 minutes and the process under it is killed when the watch ends, so the lane goes GONE while the
-session is still working; a background task runs until the session ends. To be woken when a frame
+session is still working. A background task is the better home for it, with a caveat that depends on your
+build: Claude Code 2.1.286 added a time limit to background commands (30 minutes by default), and its changelog
+says 2.1.288 applies the limit only to unattended sessions (`-p`, the Agent SDK, CI, cloud). On 2.1.287 the
+maintainer's feeds were stopped at exactly 30.0 minutes. Where your build stops it, the lane goes GONE when it
+does: start the feed again, or move to a build without the limit. To be woken when a frame
 arrives, add a `Monitor` that runs `tail -n 0 -F` on that log (`-F`, not `-f`: if the feed is
 restarted and its log truncated or recreated, `-f` goes on following the old file and stays silent). That watcher is capped too, and each expiry wakes the agent for a turn, so
 keeping it armed costs a turn every 30 minutes; without it, frames wait in the log until the agent

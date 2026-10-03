@@ -3168,6 +3168,26 @@ grepping for the new words would assert the wording and not the fact (the habit 
 
 ---
 
+## R2-19 — onboarding told an agent a background task runs until its session ends
+
+**Severity:** medium; `R2-18`'s defect in the file written to be handed to an agent on its first day.
+
+**What was wrong.** `ONBOARDING.md` said *"A background task runs until your session ends"*, the sentence `R2-12`
+put there on the strength of the same single measurement `R2-18` describes. On Claude Code 2.1.286 and 2.1.287
+it is false: the task is stopped after 30 minutes by default, and the lane goes GONE about 90 seconds later while
+the agent is alive and working. An agent that followed the document had no reason to suspect the holder.
+
+**The fix.** The same two statements and the same advice as the README's, kept short for this file: the limit was
+added in 2.1.286, the changelog says 2.1.288 applies it only to unattended sessions, and on a build that stops the
+task the remedy is to start the feed again or move to a build without the limit. The measurement itself (30.0
+minutes on 2.1.287) lives in `R2-18` and is not repeated here. This was found, not by a review, but by checking the
+public tree for every other copy of the claim after correcting the README; the log's own `R2-10` and `R2-12` entries
+carry it too and are left as the history they are.
+
+**No test, this is prose.**
+
+---
+
 ## B-L2 — the README never showed how to connect an MCP client
 
 **Severity:** medium for a first-time reader. The `sw_*` tools are the headline feature, and the one

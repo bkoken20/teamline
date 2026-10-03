@@ -44,7 +44,10 @@ wakes you. How you *hear* frames depends on your harness:
   redirected to a log file — **not** inside a `Monitor(...)`. Every `Monitor` is capped at 30
   minutes, and when the watch ends **the process under it is killed**: your lane goes GONE about 90
   seconds later while your session is alive and working, and callers get voicemail from someone
-  sitting right there. A background task runs until your session ends. To be woken when a frame
+  sitting right there. A background task is the better home for it, but check your build: Claude Code
+  2.1.286 added a 30-minute limit to background commands, and its changelog says 2.1.288 applies it only
+  to unattended sessions (`-p`, the Agent SDK, CI, cloud). If your build stops the task, the lane goes GONE
+  when it does: start the feed again, or move to a build without the limit. To be woken when a frame
   arrives, add a `Monitor` that runs `tail -n 0 -F` on that log (`-F`, not `-f`: if the feed is
   restarted and its log truncated or recreated, `-f` follows the old file, silent). That watcher
   is capped at 30 minutes too, and each expiry wakes you for a turn, so keeping it armed costs a

@@ -51,8 +51,8 @@ PERTURBATIONS = [
          why="empties the snapshot, so the exposure the security section describes would be gone"),
 
     dict(id="A4-restore", suite="unit", file="teamline/switchboard.py",
-         find='        self._feed_alive(ext)\n        e["last_seen"] = self.now()',
-         repl='        e["last_seen"] = self.now()',
+         find='        self._feed_alive(ext)\n        t = self.now()\n        e["last_seen"] = t',
+         repl='        t = self.now()\n        e["last_seen"] = t',
          must_fail="a keepalive on the same socket brings the lane back",
          why="stops a frame from restoring a lane marked down by silence"),
 
@@ -725,4 +725,40 @@ PERTURBATIONS = [
          repl="        if False:\n",
          must_fail="a team named twice is REFUSED at start",
          why="lets beta=6,beta=3 start with the second cap silently winning -- found by attacking the fix"),
+
+    dict(id="C-2-touch", suite="unit", file="teamline/switchboard.py",
+         find='        if t - self._touch_row_at.get(ext, float("-inf")) >= TOUCH_ROW_S:\n'
+              '            self._touch_row_at[ext] = t\n'
+              '            self._commit("touch", ext=ext)',
+         repl='        self._commit("touch", ext=ext)',
+         must_fail="a holder flooding 1000 unrecognised frames does not add 1000 ledger rows",
+         why="ledgers every touch again: one row per frame a holder sends"),
+
+    dict(id="C-2-touch-live", suite="unit", file="teamline/switchboard.py",
+         find='        self._feed_alive(ext)              # any frame disproves the silence, not only a keepalive\n'
+              '        t = self.now()\n'
+              '        e["last_seen"] = t\n',
+         repl='        self._feed_alive(ext)              # any frame disproves the silence, not only a keepalive\n'
+              '        t = self.now()\n',
+         must_fail="while liveness stays current in memory",
+         why="leaves last_seen to the throttled row, so liveness goes as stale as the window"),
+
+    dict(id="C-2-running", suite="unit", file="teamline/switchboard.py",
+         find='        if e["running"] != e["running_led"] and t - self._running_row_at.get(ext, float("-inf")) >= TOUCH_ROW_S:',
+         repl='        if e["running"] != e["running_led"]:',
+         must_fail="a holder flipping running 1000 times does not add 1000 ledger rows",
+         why="ledgers every flip of the keepalive's running flag again"),
+
+    dict(id="C-2-converge", suite="unit", file="teamline/switchboard.py",
+         find='        if e["running"] != e["running_led"] and t - self._running_row_at.get(ext, float("-inf")) >= TOUCH_ROW_S:',
+         repl='        if e["running"] != e["running_led"] and ext not in self._running_row_at:',
+         must_fail="a change the throttle held back reaches the ledger at the next keepalive",
+         why="writes the flag once and never again, so a change held back by the window is lost to the ledger"),
+
+    dict(id="C-2-refusal", suite="unit", file="teamline/switchboard.py",
+         find='        if t - self._failed_row_at.get(msg_id, float("-inf")) < TOUCH_ROW_S:\n'
+              '            return False\n',
+         repl='',
+         must_fail="a holder refusing one pending message 1000 times does not add 1000 ledger rows",
+         why="ledgers every refusal again: one delivery_failed row per refusal of the same message"),
 ]

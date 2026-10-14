@@ -839,6 +839,55 @@ def main():
     rc, _, err = caps("beta=6,beta=3")
     ck("...a team named twice is REFUSED at start rather than one cap silently winning",
        rc != 0 and "twice" in err[0], err)
+
+    # ---- ledger row RATE. Every frame a holder sends that is not a valid ack or a ping reaches
+    # touch() (switchboard_broker.on_frame: unparseable, not an object, or an ack for a message that is
+    # not this lane's), and touch() appended a ledger row each time -- so one holder could grow the
+    # ledger, on disk and in memory, as fast as it could send. A8 bounded a row's SIZE, not how MANY.
+    tmp_r = tempfile.mkdtemp(prefix="sb_rate_")
+    _, sr, cr = fresh(tmp_r)
+    sr.register("alpha", "flood", now="x", feed=True, sid="s-flood")
+    before = len(sr.ledger_rows())
+    for _ in range(1000):
+        sr.touch("alpha/flood")
+    added = len(sr.ledger_rows()) - before
+    ck("a holder flooding 1000 unrecognised frames does not add 1000 ledger rows (row RATE bounded)",
+       added <= 1, "added %d rows" % added)
+    with open(os.path.join(tmp_r, "sb.jsonl"), encoding="utf-8") as fh:
+        on_disk = sum(1 for ln in fh if '"touch"' in ln)
+    ck("...and the bound holds on DISK, not only in the in-memory row list", on_disk <= 1,
+       "%d touch rows on disk" % on_disk)
+    cr.t += 7
+    sr.touch("alpha/flood")
+    ck("...while liveness stays current in memory: a touch inside the quiet window still moves last_seen",
+       dirmap(sr)["alpha/flood"]["last_seen_age_s"] < 1, dirmap(sr)["alpha/flood"]["last_seen_age_s"])
+    # The keepalive is the second door. It is ledgered "only on change" -- and a holder decides what
+    # changes: {"ping":1,"running":true} and {"ping":1,"running":false}, alternated, were one row each.
+    before = len(sr.ledger_rows())
+    for i in range(1000):
+        sr.set_running_ext("alpha/flood", i % 2 == 0)
+    added = len(sr.ledger_rows()) - before
+    ck("a holder flipping running 1000 times does not add 1000 ledger rows (keepalive door bounded too)",
+       added <= 1, "added %d rows" % added)
+    ck("...while the running flag itself is current in memory (the last ping wins)",
+       sr._ext["alpha/flood"]["running"] is False, sr._ext["alpha/flood"]["running"])
+    cr.t += 31
+    sr.set_running_ext("alpha/flood", False)
+    led = [r for r in sr.ledger_rows() if r["event"] == "running" and r["ext"] == "alpha/flood"]
+    ck("...and a change the throttle held back reaches the ledger at the next keepalive after the window",
+       led and led[-1]["running"] is False, [r["running"] for r in led])
+    _, sr2, _ = fresh(tmp_r, cr)
+    ck("...so a replay agrees with memory about the running flag", sr2._ext["alpha/flood"]["running"] is False,
+       sr2._ext["alpha/flood"]["running"])
+    # The third door: a refusal. A1 lets a holder ack only messages addressed to it -- but it may refuse
+    # one of those as often as it likes, and every refusal was a `delivery_failed` row carrying up to 300
+    # characters the client chose. Ids are bounded by what is pending to the lane; repeats were not.
+    before = len(sr.ledger_rows())
+    for _ in range(1000):
+        sr.mark_failed("m-pending-1", "refused by watcher: no")
+    added = len(sr.ledger_rows()) - before
+    ck("a holder refusing one pending message 1000 times does not add 1000 ledger rows (refusal door bounded)",
+       added <= 1, "added %d rows" % added)
     return finish()
 
 

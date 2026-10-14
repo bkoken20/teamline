@@ -75,7 +75,13 @@ TEXT_MAX = 4000
 # this bounds only what is RETAINED, which existed solely to serve a 200-row operator snapshot.
 # NOTE: the ledger FILE is still unbounded. Compaction is not implemented -- see docs/FIX_LOG.md.
 ROWS_KEPT = 5000
-NOW_MAX = 200                                     # now-line cap: 120 truncated real now-lines
+# A touch is LEDGERED at most once per this many seconds per extension; in memory, last_seen moves on
+# every touch. Every frame a holder sends that is not a valid ack or a ping is a touch, so without this
+# one holder could add a ledger row per frame, as fast as it could send. 30 s keeps the replayed
+# last_seen within a third of feed_gone_s (90 s) of the truth -- persisting no touch at all would leave
+# it as old as the lane's last other event.
+TOUCH_ROW_S = 30.0
+NOW_MAX = 200                                    # now-line cap: 120 truncated real now-lines
 
 
 def _ts_local(t):
@@ -119,6 +125,9 @@ class Switchboard:
         self._rows, self._ext, self._calls = collections.deque(maxlen=ROWS_KEPT), {}, {}
         self._outbox, self._delivered, self._held = [], set(), []      # held voicemail
         self._waiters, self._listeners, self._row_listeners = {}, [], []
+        self._touch_row_at = {}                                         # ext -> when its last touch was ledgered
+        self._running_row_at = {}                                       # ext -> when its running flag was ledgered
+        self._failed_row_at = {}                                        # msg_id -> when its failure was ledgered
         self._replaying = False
         os.makedirs(os.path.dirname(os.path.abspath(ledger_path)) or ".", exist_ok=True)
         os.makedirs(calls_dir, exist_ok=True)
@@ -224,7 +233,7 @@ class Switchboard:
         if ev == "register":
             self._ext[r["ext"]] = dict(ext=r["ext"], team=r["team"], name=r["name"], session_id=r.get("session_id"),
                                        feed=bool(r.get("feed")), feed_up=bool(r.get("feed")), now=r["now"], now_ts=t,
-                                       derived=None, derived_ts=None, busy=None, running=False, last_seen=t,
+                                       derived=None, derived_ts=None, busy=None, running=False, running_led=False, last_seen=t,
                                        gone_since=None, gone_reason=None, registered=t, sid=r.get("sid"))
         elif ev in ("retired", "unregister"):
             self._ext.pop(r["ext"], None)
@@ -247,10 +256,10 @@ class Switchboard:
                 if e["team"] != r["team"] or not e["session_id"]:
                     continue
                 if e["session_id"] in live:
-                    e["running"] = bool(live[e["session_id"]])
+                    e["running"] = e["running_led"] = bool(live[e["session_id"]])
                     e["gone_since"], e["gone_reason"] = None, None
                 else:
-                    e["running"] = False
+                    e["running"] = e["running_led"] = False
                     # FIRST CAUSE WINS -- but the host's word is the stronger evidence, and only the
                     # host can withdraw it.
                     e["gone_since"] = e["gone_since"] or t
@@ -287,7 +296,7 @@ class Switchboard:
         elif ev == "running":
             e = self._ext.get(r["ext"])
             if e:
-                e["running"] = bool(r["running"])
+                e["running"] = e["running_led"] = bool(r["running"])
                 e["last_seen"] = t
         elif ev == "call":
             self._calls[r["call_id"]] = dict(call_id=r["call_id"], caller=r["ext"], callee=r["peer"], subject=r["subject"],
@@ -638,14 +647,24 @@ class Switchboard:
             self._commit("feed", ext=ext, up=True, reason="the holder spoke again")
 
     def set_running_ext(self, ext, running):
-        """Liveness from the watcher's keepalive ({"ping":1,"running":bool}); ledgered only on change."""
+        """Liveness from the watcher's keepalive ({"ping":1,"running":bool}).
+
+        In memory the flag is always the latest ping's: it holds the ring timer and marks the lane BUSY.
+        The LEDGER is written when the flag differs from what the ledger last said (`running_led`), and
+        at most once per TOUCH_ROW_S per extension -- a holder alternating true/false was otherwise one
+        row per frame. A change the throttle holds back is not lost: the next keepalive after the window
+        (they come every <= 25 s) finds the flag still differing and writes it.
+        """
         e = self._ext.get(ext)
         if not e:
             return
         self._feed_alive(ext)
-        e["last_seen"] = self.now()
-        if bool(running) != e["running"]:
-            self._commit("running", ext=ext, running=bool(running))
+        t = self.now()
+        e["last_seen"] = t
+        e["running"] = bool(running)
+        if e["running"] != e["running_led"] and t - self._running_row_at.get(ext, float("-inf")) >= TOUCH_ROW_S:
+            self._running_row_at[ext] = t
+            self._commit("running", ext=ext, running=e["running"])
 
     def feed(self, team, name, up, sid=None):
         """sid: the socket identity now holding this lane, when the caller knows it.
@@ -663,8 +682,14 @@ class Switchboard:
             self._end_calls_of(e["ext"], "feed closed", lost=True)
 
     def touch(self, ext):
-        if ext in self._ext:
-            self._feed_alive(ext)          # any frame disproves the silence, not only a keepalive
+        e = self._ext.get(ext)
+        if not e:
+            return
+        self._feed_alive(ext)              # any frame disproves the silence, not only a keepalive
+        t = self.now()
+        e["last_seen"] = t
+        if t - self._touch_row_at.get(ext, float("-inf")) >= TOUCH_ROW_S:
+            self._touch_row_at[ext] = t
             self._commit("touch", ext=ext)
 
     def directory(self):
@@ -895,6 +920,13 @@ class Switchboard:
         when it refuses, like that one."""
         if msg_id in self._delivered:      # settled: a delivery is not reversible by a later sweep
             return False
+        # ...and one failure row per message per TOUCH_ROW_S. A holder may refuse a message addressed to
+        # it as often as it likes; every refusal was a row. The broker's own sweep for an unanswered push
+        # runs at most once per ack window plus backoff (>= 60 s), so it is never the one held back.
+        t = self.now()
+        if t - self._failed_row_at.get(msg_id, float("-inf")) < TOUCH_ROW_S:
+            return False
+        self._failed_row_at[msg_id] = t
         self._commit("delivery_failed", msg_id=msg_id, error=str(error)[:300])
         return True
 

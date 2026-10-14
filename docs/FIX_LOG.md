@@ -3257,6 +3257,66 @@ duplicate guard) each turn their check red.
 
 ---
 
+## C-2 — one holder could grow the ledger as fast as it could send
+
+**Severity:** high for a broker that shares a disk with anything else. This was the open finding *"Row
+RATE is unbounded"*, carried in the table below since `A8` bounded row *size*. Fixed now because the
+maintainer's broker is moving onto a machine whose disk matters more than the one it was on.
+
+**What was wrong, precisely, and what the code does.** A holder's socket reaches the ledger through
+three doors in `switchboard_broker.on_frame`, and each wrote one row per frame:
+
+1. **touch** — any frame that does not parse, is not an object, or is an ack for a message that is not
+   this lane's (the `A1` guard sends those here). `touch()` appended a `touch` row every time.
+2. **the keepalive** — `{"ping":1,"running":…}`. `set_running_ext()` was *"ledgered only on change"*,
+   but the holder decides what changes: `true`, `false`, `true`… was a row per frame.
+3. **a refusal** — `{"ack":<id>,"accepted":false}`. `A1` restricts the ids to messages addressed to
+   the lane, but not how often: each refusal of the same pending message was a `delivery_failed` row
+   carrying up to 300 characters the client chose.
+
+Measured red: 1000 frames through each door added 1000 rows, all of them on disk.
+
+**The fix.** Memory stays exact; the ledger is throttled. `TOUCH_ROW_S = 30` per extension (per
+message, for refusals).
+- `touch()` moves `last_seen` on every call and ledgers at most one `touch` per window.
+- `set_running_ext()` sets the flag on every ping — it holds the ring timer and marks the lane BUSY,
+  so it must be current — and ledgers when the flag differs from what the *ledger* last said
+  (`running_led`, kept by the same three ledger events that set `running`), at most once per window.
+  A change the window holds back is not lost: genuine keepalives come every ≤ 25 s, so the next one
+  after the window still finds the flag differing and writes it.
+- `mark_failed()` ledgers at most one failure per message per window. The guard sits there rather
+  than in the broker for the reason its existing "already delivered" guard does: more than one caller
+  reaches it. The broker's own sweep for an unanswered push fails a message at most once per ack
+  window plus backoff (≥ 60 s), so it is never the one held back.
+
+Two designs were weighed for the touch: throttling the row, or never ledgering a touch at all. Never
+ledgering would leave the replayed `last_seen` as old as the lane's last other event; the throttle
+keeps it within 30 s, a third of `feed_gone_s`. The throttle won on that number.
+
+**Walked**, not only tested: every reader of `last_seen` and `running` (hygiene, retirement, the
+re-attach guard, the ring timer, BUSY) reads the in-memory value, which still moves on every frame;
+`_entry()` builds the directory field by field, so `running_led` is not published; the operator page
+already ignores `touch` rows and shows liveness from the directory snapshot.
+
+**The attack on the fix.** The first version fixed `touch` alone — the finding as it was written.
+Asking what else a holder controls found doors 2 and 3, each red at 1000 rows before its own fix. A
+first draft for the keepalive compared against the in-memory flag, which would have dropped a change
+held back by the window for ever; `running_led` and the convergence check exist because of that.
+Moving `set_running_ext`'s lines also made `A4-restore`'s target stale; its target was moved and it
+still fires.
+
+**What it does NOT bound.** The ledger file still grows with every legitimate event and is never
+compacted (`ROWS_KEPT` bounds only what is kept in memory). An MCP client can still write rows through
+the `sw_*` tools — `sw_now`, `sw_say` — at the rate it can call them. Those are client actions with
+their own meaning, not side effects of a socket, and are listed below.
+
+**Checks.** Seven, in the unit suite: one per door at 1000 frames, the disk bound, liveness current in
+memory, the running flag current in memory, convergence after the window, and a replay agreeing with
+memory. Perturbations `C-2-touch`, `C-2-touch-live`, `C-2-running`, `C-2-converge` and `C-2-refusal`
+each turn their check red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -3266,8 +3326,10 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 168 of the 253 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
-| **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
+| 171 of the 261 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| ~~**Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them.~~ | **CLOSED by C-2**, with two more doors of the same kind found by attacking the fix. |
+| **The `sw_*` tools are not rate-limited.** An MCP client can write `now`, `say` and `leave` rows as fast as it can call them. Unlike C-2's doors these are deliberate client actions, so a bound is a policy choice (per-client budget, or per-lane), not a side effect to remove. | open |
+| **The ledger FILE is never compacted.** It grows with every legitimate event; only what is kept in memory is bounded (`ROWS_KEPT`). | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |
 | `dist/` is not in `.gitignore`, so a build artefact by that name would trip the top-level-directory check in B-L1. | open |

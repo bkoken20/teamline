@@ -813,6 +813,32 @@ def main():
     ck("...but its last_seen goes stale regardless, which is what makes it evictable",
        sq.entry("alpha", "sid-only")["last_seen_age_s"] > 90,
        sq.entry("alpha", "sid-only")["last_seen_age_s"])
+
+    # ---- the call cap is a DEPLOYMENT choice, so a deployment must be able to make it. The library
+    # ships uncapped and the broker built its Switchboard with no cap_into at all, so a deployment that
+    # runs a team at a cap -- the README's own production example -- had no way to set one: the cap
+    # silently vanished. TEAMLINE_CAP_INTO is read where TEAMLINE_TEAMS is, and is checked as hard.
+    import subprocess
+    lib = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "teamline")
+
+    def caps(value):
+        env = dict(os.environ, TEAMLINE_TEAMS="alpha,beta", TEAMLINE_CAP_INTO=value)
+        p = subprocess.run([sys.executable, "-c", "import json, switchboard as S; print(json.dumps(S.CAP_INTO_DEFAULT))"],
+                           cwd=lib, env=env, capture_output=True, text=True)
+        return p.returncode, (p.stdout or "").strip(), (p.stderr or "").strip().splitlines()[-1:] or [""]
+
+    rc, out, _ = caps("beta=6")
+    ck("TEAMLINE_CAP_INTO=beta=6 caps calls into beta at 6 (a deployment can set the cap)",
+       rc == 0 and out == '{"beta": 6}', (rc, out))
+    rc, out, _ = caps("")
+    ck("...unset or empty, the library stays uncapped", rc == 0 and out == "{}", (rc, out))
+    rc, _, err = caps("zeta=2")
+    ck("...a cap for a team that is not enabled is REFUSED at start, naming the team", rc != 0 and "zeta" in err[0], err)
+    rc, _, err = caps("beta=lots")
+    ck("...a cap that is not a whole number >= 1 is REFUSED at start", rc != 0 and "beta" in err[0], err)
+    rc, _, err = caps("beta=6,beta=3")
+    ck("...a team named twice is REFUSED at start rather than one cap silently winning",
+       rc != 0 and "twice" in err[0], err)
     return finish()
 
 

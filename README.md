@@ -181,12 +181,13 @@ TEAMLINE_PARTY=alpha python teamline/teamline_cli.py sw_call \
 
 ## Configuration
 
-Everything is an environment variable; there is no config file. The broker reads the first five, a
+Everything is an environment variable; there is no config file. The broker reads the first six, a
 client reads the last two.
 
 | variable | default | what it does |
 |---|---|---|
 | `TEAMLINE_TEAMS` | `alpha,beta` | the teams this broker serves, comma-separated. A team not on this list is refused at the door. Adding one is this variable and a restart. |
+| `TEAMLINE_CAP_INTO` | empty (uncapped) | per-team limit on calls ringing or open *into* that team, e.g. `beta=6,gamma=2`. A team not in `TEAMLINE_TEAMS`, a team named twice, or a cap that is not a whole number ≥ 1 stops the broker at start. |
 | `TEAMLINE_ROOT` | `./data` | where the ledger and call transcripts are written. **Relative to the working directory you launch from**, not to the repository. Created if missing. |
 | `TEAMLINE_PORT` | `3790` | the port the broker listens on. |
 | `TEAMLINE_BIND` | `127.0.0.1` | the address it binds. `0.0.0.0` inside a container; read the security section before widening it on a host. |

@@ -3221,6 +3221,42 @@ snippet still parses and still reads correctly, and the check goes red.
 
 ---
 
+## C-1 — a deployment could not set the per-team call cap
+
+**Severity:** medium. The cap is how a team woken by delivery keeps simultaneous calls within what its
+sessions can answer. The library has always shipped uncapped and said so; the defect is that a
+*deployed* broker had no way to be anything else.
+
+**On the numbering.** `C` entries were found while converging the maintainer's own running broker onto
+this tree. That broker had been maintained as a separate copy since publication, and comparing the two
+showed it carried a cap this tree could not express.
+
+**What was wrong, precisely, and what the code does.** `Switchboard.__init__` takes `cap_into` and
+falls back to `CAP_INTO_DEFAULT`, which was `{}`. The broker builds its switchboard in
+`switchboard_broker.wire()` with no `cap_into` at all, and nothing in `teamline_broker.py` read a
+setting for it. So the cap the comment above `CAP_INTO_DEFAULT` describes — *"in production we run one
+team at 6"* — was unreachable from the code a reader would deploy: run this broker and every team was
+uncapped, with no error to say so.
+
+**The fix.** `TEAMLINE_CAP_INTO`, e.g. `beta=6,gamma=2`, read once at import in `switchboard.py`, the
+same place and the same moment `TEAMLINE_TEAMS` is read. Two places were considered: the entrypoint,
+where the other broker settings live, threaded through `wire()`; or the library, next to the team
+list the cap must be checked against. The library won on two counts: the check needs `TEAMS` in hand,
+and the unit suite can test it in a subprocess without starting a broker. It is strict: a team that is
+not enabled, a cap that is not a whole number ≥ 1, or a team named twice stops the broker at start,
+because a cap that silently fails to apply is the defect being fixed. The README's settings table
+carries it.
+
+**The attack on the fix found one more.** The first version accepted `beta=6,beta=3` and kept 3 —
+the same silent misconfiguration. It now refuses a team named twice.
+
+**Checks.** Five, in the unit suite: the cap is applied from the variable; unset stays uncapped; an
+unknown team, a non-number and a duplicate each refuse at start. Red before the fix (the variable was
+ignored: `{}`), green after. Perturbations `C-1` (restore the `{}` default) and `C-1-twice` (drop the
+duplicate guard) each turn their check red.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -3230,7 +3266,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 165 of the 248 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 168 of the 253 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | **Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them. `A8` bounded row *size*; nothing bounds how many. Found alongside R-7 and deliberately not folded into it: a different mechanism, and it needs a different fix. | open |
 | Two checks need a list of private names that is deliberately not in this repository, and print `NOT RUN` without it. | open by design — see R-12 |
 | **Seen once, not reproduced: one of two CONCURRENT end-to-end runs failed** while the other passed, with one extra check reported. Six further concurrent pairs were all green. The run's failing check names were not captured — the harness counted checks rather than keeping their names, which is fixed — so it cannot be characterised. Recorded rather than dismissed: an intermittently red suite is a reputational defect in a repository whose README invites you to run it. | **open, uncharacterised** |

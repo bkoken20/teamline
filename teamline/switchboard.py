@@ -40,11 +40,30 @@ NOW_MODEL_WINS_S, RING_TIMEOUT_S = 30 * 60, 90
 # because a team whose sessions are woken by delivery has a wake budget: N simultaneous calls means N
 # sessions interrupted at once. A team with no entry here is uncapped.
 #
-#     Switchboard(..., cap_into={"beta": 6})
+#     Switchboard(..., cap_into={"beta": 6})        in code, or for a deployed broker:
+#     TEAMLINE_CAP_INTO=beta=6,gamma=2              read once at start, like TEAMLINE_TEAMS
 #
 # Default: uncapped. In production we run one team at 6, reached by measuring how many of their
-# sessions could answer at once rather than by picking a number.
-CAP_INTO_DEFAULT = {}
+# sessions could answer at once rather than by picking a number. A misspelt team or a cap that is not
+# a whole number stops the broker at start: a cap that silently fails to apply is worse than none.
+def _caps_from(text):
+    caps = {}
+    for item in (text or "").split(","):
+        if not item.strip():
+            continue
+        team, _, n = item.partition("=")
+        team = team.strip().lower()
+        if team not in TEAMS:
+            raise ValueError(f"TEAMLINE_CAP_INTO names team {team!r}, which is not enabled; teams are {TEAMS}")
+        if team in caps:
+            raise ValueError(f"TEAMLINE_CAP_INTO names team {team!r} twice; which cap was meant is not guessed")
+        if not n.strip().isdigit() or int(n) < 1:
+            raise ValueError(f"TEAMLINE_CAP_INTO cap for {team!r} must be a whole number >= 1, got {n.strip()!r}")
+        caps[team] = int(n)
+    return caps
+
+
+CAP_INTO_DEFAULT = _caps_from(os.environ.get("TEAMLINE_CAP_INTO", ""))
 NUDGE_S, CALL_CAP_S = 5 * 60, 2 * 3600
 # What a client may send in one message. Receipts, now-lines and delivery errors were already
 # capped; `say` and `leave` -- the two paths that actually carry content -- were not, so one caller

@@ -572,10 +572,11 @@ PERTURBATIONS = [
              "registered and holds no feed"),
 
     dict(id="R-24-doc", suite="e2e", file="README.md",
-         find="The broker reads the first five, a",
-         repl="The broker reads the first four, a",
+         find="The broker reads the first six, a",
+         repl="The broker reads the first five, a",
          must_fail="the configuration prose counts the variables each side reads, correctly",
-         why="restores the miscount: seven rows, five of them read by the broker, described as four"),
+         why="restores a miscount: the broker reads one more variable than the prose says (originally "
+             "seven rows described as four; since C-1 added TEAMLINE_CAP_INTO, eight described as five)"),
 
     dict(id="R-24-code", suite="e2e", file="teamline/teamline_broker.py",
          find='PAGE_FILE = os.environ.get("TEAMLINE_PAGE"',
@@ -712,4 +713,16 @@ PERTURBATIONS = [
          must_fail="no unauthenticated door hands out the identity the re-attach guard checks",
          why="makes the refusal name the session holding the lane. Found by walking the fix, not by "
              "the review: probe a taken name, be turned away, read the credential out of the refusal"),
+
+    dict(id="C-1", suite="unit", file="teamline/switchboard.py",
+         find='CAP_INTO_DEFAULT = _caps_from(os.environ.get("TEAMLINE_CAP_INTO", ""))',
+         repl='CAP_INTO_DEFAULT = {}',
+         must_fail="TEAMLINE_CAP_INTO=beta=6 caps calls into beta at 6",
+         why="puts back the default every deployed broker had: uncapped, whatever it was configured to do"),
+
+    dict(id="C-1-twice", suite="unit", file="teamline/switchboard.py",
+         find="        if team in caps:\n",
+         repl="        if False:\n",
+         must_fail="a team named twice is REFUSED at start",
+         why="lets beta=6,beta=3 start with the second cap silently winning -- found by attacking the fix"),
 ]

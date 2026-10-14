@@ -498,7 +498,7 @@ PERTURBATIONS = [
 
     dict(id="R-20", suite="e2e", file="teamline/switchboard_broker.py",
          find="        live_ids = {e[\"id\"] for e in sb._outbox}\n"
-              "        for _book in (pushed_at, retry_at):\n"
+              "        for _book in (pushed_at, retry_at, failures):\n"
               "            for _settled in [k for k in _book if k not in live_ids]:\n"
               "                del _book[_settled]\n",
          repl="",
@@ -761,4 +761,26 @@ PERTURBATIONS = [
          repl='',
          must_fail="a holder refusing one pending message 1000 times does not add 1000 ledger rows",
          why="ledgers every refusal again: one delivery_failed row per refusal of the same message"),
+
+    dict(id="C-3", suite="e2e", file="teamline/switchboard_broker.py",
+         find="    return min(cap_s, base_s * 2 ** min(max(failures, 1) - 1, 30))",
+         repl="    return base_s",
+         must_fail="a never-acked message is retried ever more slowly",
+         why="puts back the constant wait: one stuck message re-pushed about once a minute, a row each time"),
+
+    dict(id="C-3-cap", suite="e2e", file="teamline/switchboard_broker.py",
+         find="    return min(cap_s, base_s * 2 ** min(max(failures, 1) - 1, 30))",
+         repl="    return base_s * 2 ** min(max(failures, 1) - 1, 30)",
+         must_fail="doubling from the base to a cap of an hour, and no further",
+         why="drops the cap, so after a few days a message waits weeks between tries"),
+
+    dict(id="C-3-noreset", suite="e2e", file="teamline/switchboard_broker.py",
+         find="            feeds.setdefault(full, set()).add(ws)\n",
+         repl="            feeds.setdefault(full, set()).add(ws)\n"
+              "            for _owed in [e[\"id\"] for e in sb._outbox if e[\"to\"] == full]:\n"
+              "                retry_at.pop(_owed, None)\n"
+              "                failures.pop(_owed, None)\n",
+         must_fail="a reconnect does NOT reset the retry spacing back to the start",
+         why="re-adds the reset the first version of C-3 shipped with: a watcher that keeps reconnecting "
+             "without acking would bring the once-a-minute rows back"),
 ]

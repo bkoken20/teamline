@@ -3317,6 +3317,48 @@ each turn their check red.
 
 ---
 
+## C-3 — a message that was never acked was re-pushed once a minute, for ever, a row each time
+
+**Severity:** medium. Nothing was lost and nothing was wrong on the wire; the cost was the ledger and the
+operator page, which filled with the same error line.
+
+**Found in production.** A voicemail to a lane whose watcher never acked it was re-pushed every ack window
+plus backoff — about once a minute with the defaults — and each attempt wrote a `delivery_failed` row:
+"no ack from …'s watcher in 30s", 33 of them in the first 40 minutes, 1,440 a day for one message, with no
+end. PROTOCOL said so ("re-pushed the same message forever") and C-2 does not catch it: C-2 limits rows
+within 30 s, and these were a minute apart.
+
+**What the code did.** `ack_timeouts()` and a refusal both set `retry_at[mid] = now + backoff_s` — a
+constant — and `resend_pending()` re-pushed at that time, for as long as the message was owed.
+
+**The fix, and the design that lost.** Giving up after N attempts would bound the rows to N, but the
+message would be lost to a recipient that is still owed it; it was rejected on that alone. Instead the
+wait doubles after each failure, from `backoff_s` to a cap of one hour (`retry_delay()`, `RETRY_CAP_S`):
+a never-acked message costs about 30 rows on its first day and 24 a day after, and is still delivered the
+moment the watcher starts acking. Both failure paths — no ack in the window, and an explicit refusal —
+go through one helper, so they cannot drift apart. The failure counts are pruned with `retry_at` and
+`pushed_at` against the outbox, so they cannot outlive the message.
+
+**The attack on the fix changed it twice.**
+1. The first version also reset the spacing when the lane's socket came back, "so a fix on the other side
+   is delivered at once". Reading `feed()` showed the attach path ALREADY sends everything owed straight
+   down the new socket (`pending_for`), bypassing both `awaiting` and `retry_at` — so the reset bought
+   nothing, and it was harmful: a watcher that keeps reconnecting without acking would have been pushed
+   once a minute again, which is the defect. The reset was removed, and a check now requires that a
+   reconnect does NOT reset the spacing.
+2. A test written for "a reconnect inside the ack window waits for an ack the dead socket cannot send"
+   passed against the unfixed code — for the reason above — and was removed rather than kept as a check
+   that cannot fail for the reason it states.
+
+**Checks.** Four, in the end-to-end suite, against an in-process broker driven by its own ticker and a fake
+watcher that never acks: the gaps between pushes grow (red before: ten pushes at a constant 0.5 s); the
+delays double from the base to the one-hour cap and no further; a lane that reconnects gets the message at
+once; a reconnect does not reset the spacing. Perturbations `C-3`, `C-3-cap` and `C-3-noreset` each turn
+their check red. `R-20`'s target moved with the pruning tuple and still fires. PROTOCOL and the README
+describe the new behaviour.
+
+---
+
 ## Open findings — known, and NOT fixed
 
 Everything above is closed. This section exists because the log had no place to put a finding that
@@ -3326,7 +3368,7 @@ and the open ones live in somebody's memory until they do not.
 | finding | state |
 |---|---|
 | ~~No `.gitattributes`~~ | **CLOSED by V-1.** It was not latent: it was breaking the advertised command on every clone. |
-| 171 of the 261 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
+| 172 of the 265 checks in the two suites are not pinned by a perturbation. They pass; none has been shown able to fail. | open, by design — see E-L1 |
 | ~~**Row RATE is unbounded.** Any feed holder can append a `touch` row per unrecognised frame, as fast as it can send them.~~ | **CLOSED by C-2**, with two more doors of the same kind found by attacking the fix. |
 | **The `sw_*` tools are not rate-limited.** An MCP client can write `now`, `say` and `leave` rows as fast as it can call them. Unlike C-2's doors these are deliberate client actions, so a bound is a policy choice (per-client budget, or per-lane), not a side effect to remove. | open |
 | **The ledger FILE is never compacted.** It grows with every legitimate event; only what is kept in memory is bounded (`ROWS_KEPT`). | open |

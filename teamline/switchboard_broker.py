@@ -38,14 +38,33 @@ def frames(ev, chunk=CHUNK):
     return [dict(ev, text=f"[{i + 1}/{n}] " + p, part=[i + 1, n]) for i, p in enumerate(parts)]
 
 
+# Retrying a message an acking feed never acks. It stays owed -- abandoning it would lose it -- but the
+# wait doubles after each failure, from `backoff_s` up to this cap. A constant wait re-pushed one stuck
+# message about once a minute for ever, each attempt a ledger row; doubling to a 1 h cap makes that
+# ~30 rows on the first day and 24 a day after. A RECONNECT does not reset the spacing, deliberately:
+# the attach path already sends everything owed straight away (feed(), `pending_for`), and a reset
+# would let a watcher that keeps reconnecting without acking bring the once-a-minute rows back.
+RETRY_CAP_S = 3600.0
+
+
+def retry_delay(failures, base_s, cap_s=RETRY_CAP_S):
+    """Seconds to wait after a message's `failures`-th failed delivery (1 = the first): base, 2x, 4x... capped."""
+    return min(cap_s, base_s * 2 ** min(max(failures, 1) - 1, 30))
+
+
 def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=90, backoff_s=30,
-         state_every_s=10, port=3790, accept_parallel=8):
+         state_every_s=10, port=3790, accept_parallel=8, retry_cap_s=RETRY_CAP_S):
     sb = SB.Switchboard(ledger_path=os.path.join(root, "switchboard.jsonl"), calls_dir=os.path.join(root, "calls"),
                         require_feed=True, feed_gone_s=feed_gone_s)
     SB.RING_TIMEOUT_S = ring_timeout_s
     feeds = {}                                            # ext -> set(ws)
     awaiting = {}                                         # msg_id -> (sent_at, ext)  (acking feeds only)
     retry_at = {}                                         # msg_id -> earliest re-send
+    failures = {}                                         # msg_id -> failed deliveries so far (spaces the retries)
+
+    def _failed_again(mid, now):
+        failures[mid] = failures.get(mid, 0) + 1
+        retry_at[mid] = now + retry_delay(failures[mid], backoff_s, retry_cap_s)
     accept_sem = asyncio.Semaphore(accept_parallel)       # reconnect stagger after a broker or host restart
     state_path = os.path.join(root, "broker_state.json")
     state = dict(stamp_ok=True, last_error=None)
@@ -132,7 +151,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
         cannot drift out of step with a settlement path somebody adds later."""
         now = time.time()
         live_ids = {e["id"] for e in sb._outbox}
-        for _book in (pushed_at, retry_at):
+        for _book in (pushed_at, retry_at, failures):
             for _settled in [k for k in _book if k not in live_ids]:
                 del _book[_settled]
         for ev in sb._outbox:
@@ -176,7 +195,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
                 sb.mark_delivered(mid, str(m.get("session_id") or sb.session_of(ext) or "feed"), host=True)
             else:
                 sb.mark_failed(mid, f"refused by watcher: {m.get('reason') or 'accepted=false'}")
-                retry_at[mid] = time.time() + backoff_s
+                _failed_again(mid, time.time())
             return
         if "ping" in m or "running" in m:
             sb.set_running_ext(ext, bool(m.get("running", False)))
@@ -426,7 +445,7 @@ def wire(mcp, root, loop_ref, ring_timeout_s=90, ack_timeout_s=30, feed_gone_s=9
             if now - sent > ack_timeout_s:
                 awaiting.pop(mid, None)
                 sb.mark_failed(mid, f"no ack from {ext}'s watcher in {ack_timeout_s}s")
-                retry_at[mid] = now + backoff_s
+                _failed_again(mid, now)
 
     async def ticker():
         last_state = 0.0

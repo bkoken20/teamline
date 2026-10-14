@@ -74,9 +74,12 @@ the client answers
 {"ack": "<message id>", "session_id": "<id>", "accepted": true}
 ```
 
-and re-pushes it every ack-timeout plus backoff until it does. This exists so a delivery agent can
-refuse a message it could not hand over. **A client that declares `session_id` and never acks will be
-re-pushed the same message forever.** Choose deliberately.
+and re-pushes it until it does. This exists so a delivery agent can refuse a message it could not hand
+over. The wait after each unacked or refused push doubles — backoff, 2×, 4×… up to one hour — so a
+message is never dropped, but one that is never acked costs about 30 retries on its first day and 24 a
+day after, not one a minute. A reconnect delivers everything owed at once and does **not** reset that
+spacing. **A client that declares `session_id` and never acks will still be re-pushed the same message
+for as long as it is owed.** Choose deliberately.
 
 ### Why there is no standby holder
 

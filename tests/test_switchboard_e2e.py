@@ -14,6 +14,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 
 PKG = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "teamline")
 sys.path.insert(0, PKG)
@@ -1642,6 +1643,57 @@ async def run(tmp):
        not _both29, [dict(msg=str(r.get("msg_id"))[:8], error=r.get("error")) for r in _both29])
     _tick29.cancel()
     _feed29.cancel()
+
+    # ---- a message that is never acked is retried ever more slowly, and promptly on a reconnect ----
+    # Measured in production: one voicemail to a lane whose watcher never acked was re-pushed every
+    # ack window plus backoff, about once a minute, for as long as anyone let it run, each attempt a
+    # `delivery_failed` row -- 1,440 a day for one message. The message must stay deliverable (an
+    # acking feed is owed it until it acks), so the retry is not abandoned; it is spaced out. A lane that
+    # reconnects gets it at once anyway -- the attach path sends everything owed -- and the spacing does
+    # NOT reset, or a watcher that keeps reconnecting without acking would bring the rows back.
+    class _NeverAcker(_DeadWS):
+        def __init__(self, seen):
+            self.seen = seen
+
+        async def send_text(self, t):
+            _m = json.loads(t)
+            if _m.get("kind") == "voicemail":
+                self.seen.append(time.time())
+
+        async def receive_text(self):
+            await asyncio.Event().wait()
+
+    _rbroot = os.path.join(tmp, "rb")
+    os.makedirs(_rbroot, exist_ok=True)
+    _swb = _SWB.wire(_StubMCP(), _rbroot, {"loop": asyncio.get_event_loop()},
+                     ack_timeout_s=0.2, backoff_s=0.2, feed_gone_s=30, state_every_s=0.05)
+    _sbb = _swb["sb"]
+    _tickb = asyncio.create_task(_swb["ticker"]())
+    _sbb.register("alpha", "sender", now="sending", session_id="sess-S", feed=True, sid="f-s")
+    _seenb = []
+    _feedb = asyncio.create_task(_swb["feed"](_NeverAcker(_seenb), "beta", "deaf", "up", "f-d", "sess-D"))
+    await asyncio.sleep(0.3)
+    _sbb.leave("alpha", "sender", "beta/deaf", "are you there")
+    await asyncio.sleep(4.5)
+    _gapsb = [round(b - a, 2) for a, b in zip(_seenb, _seenb[1:])]
+    ck("a never-acked message is retried ever more slowly, not at a constant rate for ever",
+       len(_gapsb) >= 3 and _gapsb[-1] >= 2 * _gapsb[0], dict(pushes=len(_seenb), gaps=_gapsb))
+    _delays = [_SWB.retry_delay(_n, 30) for _n in (1, 2, 3, 7, 8, 1000)]
+    ck("...doubling from the base to a cap of an hour, and no further",
+       _delays == [30, 60, 120, 1920, 3600, 3600], _delays)
+    _feedb.cancel()
+    await asyncio.sleep(0.1)
+    _seenb2 = []
+    _t_re = time.time()
+    _feedb2 = asyncio.create_task(_swb["feed"](_NeverAcker(_seenb2), "beta", "deaf", "back", "f-d", "sess-D"))
+    await asyncio.sleep(1.4)
+    ck("...and a lane that reconnects gets it again at once, from the attach path",
+       bool(_seenb2) and _seenb2[0] - _t_re < 0.8, dict(after_reconnect_s=[round(x - _t_re, 2) for x in _seenb2]))
+    ck("...but a reconnect does NOT reset the retry spacing back to the start",
+       len(_seenb2) == 1 or _seenb2[1] - _seenb2[0] > 1.0,
+       dict(after_reconnect_s=[round(x - _t_re, 2) for x in _seenb2]))
+    _tickb.cancel()
+    _feedb2.cancel()
 
     # ---- the first ten minutes: an interpreter version, and a CLI that says how to use it ---------
     # The only statement of a Python version in this tree was a COMMENT in requirements.txt, which is

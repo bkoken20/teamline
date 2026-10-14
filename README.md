@@ -287,7 +287,8 @@ the list says more about the system's edges than a feature table would:
   the ledger correctly recorded one delivery;
 * a holder attaching to a retired lane drained that lane's held voicemail into itself, and the
   session it was meant for got nothing;
-* an acking client that never acked was re-pushed the same message forever.
+* an acking client that never acked was re-pushed the same message about once a minute, for ever --
+  each attempt a ledger row (now: the wait doubles to an hour; `C-3` in the fix log).
 
 If a check in `tests/` reads oddly specific, that is why.
 
